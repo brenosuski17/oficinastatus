@@ -1,99 +1,88 @@
 const router = require('express').Router();
 const db = require('../db');
+const auth = require('../services/auth');
+const placaSvc = require('../services/placa');
 const fipe = require('../services/fipe');
 const { naoEncontrado, requisicaoInvalida, conflito, rota } = require('../errors');
 
-const PLACA = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/; // padrão antigo (ABC1234) e Mercosul (ABC1D23)
+router.use(auth.equipe);
 
 function validar(b) {
-  const placa = String(b.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!PLACA.test(placa)) throw requisicaoInvalida('Placa inválida. Use o formato ABC1234 ou ABC1D23.');
-  if (!b.cliente_id) throw requisicaoInvalida('Selecione o cliente dono do veículo.');
+  const placa = placaSvc.normalizarPlaca(b.placa);
+  if (!placaSvc.PLACA.test(placa)) throw requisicaoInvalida('Placa inválida. Use o formato ABC1234 ou ABC1D23.');
+  if (!b.cliente_id) throw requisicaoInvalida('Selecione o dono do veículo.');
   if (!b.marca?.trim() || !b.modelo?.trim()) throw requisicaoInvalida('Informe marca e modelo.');
   const tipo = b.tipo || 'cars';
   if (!fipe.TIPOS.includes(tipo)) throw requisicaoInvalida('Tipo de veículo inválido.');
   const int = (v) => (v === '' || v == null ? null : parseInt(v, 10));
   return {
-    cliente_id: b.cliente_id,
-    placa,
-    tipo,
-    marca: b.marca.trim(),
-    modelo: b.modelo.trim(),
-    ano_modelo: int(b.ano_modelo),
-    combustivel: b.combustivel || null,
-    cor: b.cor?.trim() || null,
-    quilometragem: int(b.quilometragem),
-    fipe_codigo: b.fipe_codigo || null,
-    fipe_ano_id: b.fipe_ano_id || null,
-    fipe_valor: b.fipe_valor || null,
-    fipe_mes_referencia: b.fipe_mes_referencia || null,
+    cliente_id: b.cliente_id, placa, tipo,
+    marca: b.marca.trim(), modelo: b.modelo.trim(),
+    ano_fabricacao: int(b.ano_fabricacao), ano_modelo: int(b.ano_modelo),
+    combustivel: b.combustivel || null, cor: b.cor?.trim() || null, quilometragem: int(b.quilometragem),
+    fipe_codigo: b.fipe_codigo || null, fipe_ano_id: b.fipe_ano_id || null,
+    fipe_valor: b.fipe_valor || null, fipe_mes_referencia: b.fipe_mes_referencia || null,
     fipe_consultado_em: b.fipe_valor ? new Date().toISOString() : null,
+    origem_dados: ['manual', 'fipe', 'placa'].includes(b.origem_dados) ? b.origem_dados : b.fipe_valor ? 'fipe' : 'manual',
   };
 }
 
 const SELECT = `
-  SELECT v.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone
+  SELECT v.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
+         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id AND o.situacao = 'aberta') AS os_aberta
     FROM veiculos v JOIN clientes c ON c.id = v.cliente_id`;
 
-function tratarPlacaDuplicada(fn) {
-  try {
-    return fn();
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE') && String(e.message).includes('placa'))
-      throw conflito('Já existe um veículo cadastrado com essa placa.');
-    if (String(e.message).includes('FOREIGN KEY')) throw requisicaoInvalida('Cliente não encontrado.');
+function traduzirErro(fn) {
+  try { return fn(); } catch (e) {
+    if (/UNIQUE.*placa/.test(e.message)) throw conflito('Já existe um veículo cadastrado com essa placa.');
+    if (/FOREIGN KEY/.test(e.message)) throw requisicaoInvalida('Cliente não encontrado.');
     throw e;
   }
 }
 
 router.get('/', rota((req, res) => {
   const b = req.query.busca ? `%${req.query.busca}%` : '%';
-  res.json(
-    db.prepare(`${SELECT} WHERE v.placa LIKE ? OR v.modelo LIKE ? OR c.nome LIKE ? ORDER BY v.id DESC`)
-      .all(b, b, b)
-  );
+  const bp = req.query.busca ? `%${placaSvc.normalizarPlaca(req.query.busca)}%` : '%';
+  res.json(db.prepare(`${SELECT} WHERE v.placa LIKE ? OR v.modelo LIKE ? OR c.nome LIKE ? ORDER BY v.id DESC`).all(bp, b, b));
+}));
+
+/**
+ * Busca pela placa: primeiro no cadastro da oficina; se não houver, consulta a API de placas.
+ * Resposta: { cadastrado: veiculo } ou { consulta: { veiculo, fipe_marca } }.
+ */
+router.get('/placa/:placa', rota(async (req, res) => {
+  const placa = placaSvc.normalizarPlaca(req.params.placa);
+  if (!placaSvc.PLACA.test(placa)) throw requisicaoInvalida('Placa inválida. Use o formato ABC1234 ou ABC1D23.');
+  const local = db.prepare(`${SELECT} WHERE v.placa = ?`).get(placa);
+  if (local) return res.json({ cadastrado: local });
+  res.json({ consulta: await placaSvc.consultar(placa) });
 }));
 
 router.get('/:id', rota((req, res) => {
   const v = db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id);
   if (!v) throw naoEncontrado('Veículo');
-  v.ordens = db
-    .prepare('SELECT id, problema_relatado, situacao, orcamento_valor, criado_em FROM ordens_servico WHERE veiculo_id = ? ORDER BY id DESC')
-    .all(v.id);
+  v.ordens = db.prepare('SELECT id, problema_relatado, situacao, criado_em, entregue_em FROM ordens_servico WHERE veiculo_id = ? ORDER BY id DESC').all(v.id);
   res.json(v);
 }));
 
+const CAMPOS = 'cliente_id, placa, tipo, marca, modelo, ano_fabricacao, ano_modelo, combustivel, cor, quilometragem, fipe_codigo, fipe_ano_id, fipe_valor, fipe_mes_referencia, fipe_consultado_em, origem_dados';
+
 router.post('/', rota((req, res) => {
   const d = validar(req.body);
-  const id = tratarPlacaDuplicada(() =>
-    db.prepare(
-      `INSERT INTO veiculos (cliente_id, placa, tipo, marca, modelo, ano_modelo, combustivel, cor, quilometragem,
-                             fipe_codigo, fipe_ano_id, fipe_valor, fipe_mes_referencia, fipe_consultado_em)
-       VALUES (@cliente_id, @placa, @tipo, @marca, @modelo, @ano_modelo, @combustivel, @cor, @quilometragem,
-               @fipe_codigo, @fipe_ano_id, @fipe_valor, @fipe_mes_referencia, @fipe_consultado_em)`
-    ).run(d).lastInsertRowid
-  );
+  const id = traduzirErro(() =>
+    db.prepare(`INSERT INTO veiculos (${CAMPOS}) VALUES (${CAMPOS.split(', ').map((c) => '@' + c).join(', ')})`).run(d).lastInsertRowid);
   res.status(201).json(db.prepare(`${SELECT} WHERE v.id = ?`).get(id));
 }));
 
 router.put('/:id', rota((req, res) => {
   const d = { ...validar(req.body), id: req.params.id };
-  const r = tratarPlacaDuplicada(() =>
-    db.prepare(
-      `UPDATE veiculos SET cliente_id=@cliente_id, placa=@placa, tipo=@tipo, marca=@marca, modelo=@modelo,
-              ano_modelo=@ano_modelo, combustivel=@combustivel, cor=@cor, quilometragem=@quilometragem,
-              fipe_codigo=COALESCE(@fipe_codigo, fipe_codigo), fipe_ano_id=COALESCE(@fipe_ano_id, fipe_ano_id),
-              fipe_valor=COALESCE(@fipe_valor, fipe_valor),
-              fipe_mes_referencia=COALESCE(@fipe_mes_referencia, fipe_mes_referencia),
-              fipe_consultado_em=COALESCE(@fipe_consultado_em, fipe_consultado_em)
-        WHERE id=@id`
-    ).run(d)
-  );
+  const sets = CAMPOS.split(', ').map((c) => (c.startsWith('fipe_') ? `${c} = COALESCE(@${c}, ${c})` : `${c} = @${c}`)).join(', ');
+  const r = traduzirErro(() => db.prepare(`UPDATE veiculos SET ${sets} WHERE id = @id`).run(d));
   if (!r.changes) throw naoEncontrado('Veículo');
   res.json(db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id));
 }));
 
-router.delete('/:id', rota((req, res) => {
+router.delete('/:id', auth.exigir('admin'), rota((req, res) => {
   const r = db.prepare('DELETE FROM veiculos WHERE id = ?').run(req.params.id);
   if (!r.changes) throw naoEncontrado('Veículo');
   res.status(204).end();

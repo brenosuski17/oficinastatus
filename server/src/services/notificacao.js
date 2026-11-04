@@ -1,92 +1,125 @@
+// Monta as mensagens de cada etapa e dispara pelos canais configurados (e-mail e WhatsApp).
 const db = require('../db');
+const config = require('../config');
+const envio = require('./envio');
 
-const NOME_OFICINA = () => process.env.NOME_OFICINA || 'OficinaStatus';
-const APP_URL = () => (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+const moeda = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const linkAcompanhamento = (codigo) => `${config.appUrl()}/acompanhar/${codigo}`;
+const dataBR = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : null);
 
-const moeda = (v) =>
-  Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-function linkAcompanhamento(codigo) {
-  return `${APP_URL()}/acompanhar/${codigo}`;
-}
-
-// Monta o link wa.me (abre o WhatsApp com a mensagem pronta para o cliente).
 function linkWhatsApp(telefone, texto) {
-  let numero = String(telefone || '').replace(/\D/g, '');
-  if (numero.length === 10 || numero.length === 11) numero = '55' + numero; // DDD + número
-  return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+  return `https://wa.me/${envio.numeroWhats(telefone)}?text=${encodeURIComponent(texto)}`;
 }
-
-const MODELOS = {
-  abertura: (c) =>
-    `Olá, ${c.primeiroNome}! Recebemos o seu ${c.veiculo} (placa ${c.placa}) na ${c.oficina}. ` +
-    `Ordem de serviço nº ${c.ordemId}. Estamos avaliando o veículo e logo enviaremos o orçamento.\n\n` +
-    `Acompanhe o andamento por aqui, sem precisar ligar: ${c.link}`,
-  orcamento: (c) =>
-    `Olá, ${c.primeiroNome}! O orçamento do seu ${c.veiculo} (placa ${c.placa}) está pronto.\n\n` +
-    `${c.orcamentoDescricao}\nValor total: ${c.orcamentoValor}\n\n` +
-    `Para APROVAR ou RECUSAR, acesse: ${c.link}`,
-  aprovado: (c) =>
-    `Obrigado, ${c.primeiroNome}! Orçamento da OS nº ${c.ordemId} aprovado. ` +
-    `Vamos iniciar o serviço no seu ${c.veiculo}. Acompanhe: ${c.link}`,
-  recusado: (c) =>
-    `${c.primeiroNome}, registramos que o orçamento da OS nº ${c.ordemId} não foi aprovado. ` +
-    `O seu ${c.veiculo} está disponível para retirada. Qualquer dúvida, estamos à disposição.`,
-  execucao: (c) =>
-    `${c.primeiroNome}, o serviço no seu ${c.veiculo} (placa ${c.placa}) começou!` +
-    `${c.previsao ? ` Previsão de entrega: ${c.previsao}.` : ''} Acompanhe: ${c.link}`,
-  pronto: (c) =>
-    `Boa notícia, ${c.primeiroNome}! O seu ${c.veiculo} (placa ${c.placa}) está PRONTO para retirada na ${c.oficina}. ` +
-    `Detalhes: ${c.link}`,
-};
 
 function contexto(ordemId) {
-  const o = db
-    .prepare(
-      `SELECT o.*, v.placa, v.marca, v.modelo, c.nome AS cliente_nome, c.telefone
-         FROM ordens_servico o
-         JOIN veiculos v ON v.id = o.veiculo_id
-         JOIN clientes c ON c.id = v.cliente_id
-        WHERE o.id = ?`
-    )
-    .get(ordemId);
-  const previsao = o.previsao_entrega
-    ? new Date(o.previsao_entrega + 'T12:00:00').toLocaleDateString('pt-BR')
-    : null;
+  const o = db.prepare(
+    `SELECT o.*, v.placa, v.marca, v.modelo, c.nome AS cliente_nome, c.telefone, c.email,
+            (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento WHERE ordem_id = o.id) AS total,
+            (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento WHERE ordem_id = o.id AND aprovado = 1) AS total_aprovado
+       FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id
+      WHERE o.id = ?`
+  ).get(ordemId);
   return {
-    telefone: o.telefone,
-    primeiroNome: o.cliente_nome.split(' ')[0],
-    veiculo: `${o.marca} ${o.modelo}`.trim(),
-    placa: o.placa,
-    ordemId: o.id,
-    oficina: NOME_OFICINA(),
+    ...o,
+    primeiro: o.cliente_nome.split(' ')[0],
+    veiculo: `${o.marca.replace(/^.* - /, '')} ${o.modelo}`.trim(),
     link: linkAcompanhamento(o.codigo_publico),
-    orcamentoDescricao: o.orcamento_descricao || '',
-    orcamentoValor: o.orcamento_valor != null ? moeda(o.orcamento_valor) : '',
-    previsao,
+    oficina: config.oficina().nome,
+    previsao: dataBR(o.previsao_entrega),
   };
 }
 
-/** Registra uma mensagem de saída para o cliente, com o link de envio pronto. */
-function notificar(ordemId, modelo, etapaId = null) {
+// Cada evento: assunto do e-mail, texto (e-mail/WhatsApp), resumo curto (variável {{2}} do modelo do WhatsApp) e rótulo do botão.
+const EVENTOS = {
+  recebido: (c) => ({
+    assunto: `Recebemos seu ${c.veiculo} (OS ${c.id})`,
+    resumo: `recebemos o seu ${c.veiculo} (placa ${c.placa}). OS nº ${c.id} aberta, já vamos começar o diagnóstico.`,
+    texto: `Olá, ${c.primeiro}! Recebemos o seu ${c.veiculo} (placa ${c.placa}) na ${c.oficina}.\nOrdem de serviço nº ${c.id} aberta. O próximo passo é o diagnóstico.\nVocê acompanha cada etapa pelo link, sem precisar ligar.`,
+  }),
+  diagnostico: (c) => ({
+    assunto: `Diagnóstico concluído — OS ${c.id}`,
+    resumo: `o diagnóstico do seu ${c.veiculo} foi concluído. Estamos montando o orçamento.`,
+    texto: `${c.primeiro}, o diagnóstico do seu ${c.veiculo} foi concluído.\n${c.diagnostico ? `Diagnóstico: ${c.diagnostico}\n` : ''}Agora estamos montando o orçamento.`,
+  }),
+  orcamento: (c) => ({
+    assunto: `Orçamento para aprovação — ${moeda(c.total)} (OS ${c.id})`,
+    resumo: `o orçamento do seu ${c.veiculo} está pronto: ${moeda(c.total)}. Aprove ou recuse pelo link.`,
+    texto: `${c.primeiro}, o orçamento do seu ${c.veiculo} (placa ${c.placa}) está pronto.\nValor total: ${moeda(c.total)}.\nPelo link você vê cada peça e serviço e pode aprovar tudo ou só parte.`,
+    botao: 'Ver e aprovar orçamento',
+  }),
+  aprovado: (c) => ({
+    assunto: `Orçamento aprovado — OS ${c.id}`,
+    resumo: `recebemos sua aprovação (${moeda(c.total_aprovado)}). Vamos começar o serviço no seu ${c.veiculo}.`,
+    texto: `Obrigado, ${c.primeiro}! Recebemos a aprovação do orçamento: ${moeda(c.total_aprovado)}.\nVamos começar o serviço no seu ${c.veiculo}.`,
+  }),
+  recusado: (c) => ({
+    assunto: `Orçamento não aprovado — OS ${c.id}`,
+    resumo: `registramos que o orçamento não foi aprovado. Seu ${c.veiculo} está disponível para retirada.`,
+    texto: `${c.primeiro}, registramos que o orçamento da OS nº ${c.id} não foi aprovado.\nO seu ${c.veiculo} está disponível para retirada. Qualquer dúvida, estamos à disposição.`,
+  }),
+  execucao: (c) => ({
+    assunto: `Serviço iniciado no seu ${c.veiculo}`,
+    resumo: `o serviço no seu ${c.veiculo} começou.${c.previsao ? ` Previsão de entrega: ${c.previsao}.` : ''}`,
+    texto: `${c.primeiro}, o serviço no seu ${c.veiculo} (placa ${c.placa}) começou.${c.previsao ? `\nPrevisão de entrega: ${c.previsao}.` : ''}`,
+  }),
+  aguardando_peca: (c) => ({
+    assunto: `Aguardando peça — OS ${c.id}`,
+    resumo: `o serviço no seu ${c.veiculo} está aguardando a chegada de uma peça. Avisamos assim que retomar.`,
+    texto: `${c.primeiro}, o serviço no seu ${c.veiculo} está aguardando a chegada de uma peça.\nAvisaremos assim que o trabalho for retomado.`,
+  }),
+  retomado: (c) => ({
+    assunto: `Serviço retomado — OS ${c.id}`,
+    resumo: `a peça chegou e o serviço no seu ${c.veiculo} foi retomado.`,
+    texto: `${c.primeiro}, a peça chegou e o serviço no seu ${c.veiculo} foi retomado.`,
+  }),
+  pronto: (c) => ({
+    assunto: `Seu ${c.veiculo} está pronto!`,
+    resumo: `seu ${c.veiculo} (placa ${c.placa}) está pronto para retirada. Total: ${moeda(c.total_aprovado)}.`,
+    texto: `Boa notícia, ${c.primeiro}! O seu ${c.veiculo} (placa ${c.placa}) está pronto para retirada na ${c.oficina}.\nValor do serviço: ${moeda(c.total_aprovado)}.`,
+  }),
+  entregue: (c) => ({
+    assunto: `Obrigado pela confiança — OS ${c.id}`,
+    resumo: `registramos a retirada do seu ${c.veiculo}. Obrigado pela confiança!`,
+    texto: `${c.primeiro}, registramos a retirada do seu ${c.veiculo}. Obrigado pela confiança!\nO histórico do serviço fica disponível no link.`,
+  }),
+};
+
+const inserir = db.prepare(
+  `INSERT INTO mensagens (ordem_id, etapa_id, canal, direcao, destinatario, assunto, conteudo, link_envio)
+   VALUES (?, ?, ?, 'saida', ?, ?, ?, ?)`
+);
+
+/**
+ * Registra e envia a notificação do evento pelos canais disponíveis.
+ * Deve ser chamada dentro da transação da mudança de etapa: o envio real acontece logo após o commit.
+ */
+function notificar(ordemId, evento, etapaId = null, { conviteLink } = {}) {
   const c = contexto(ordemId);
-  const texto = MODELOS[modelo](c);
-  const link = linkWhatsApp(c.telefone, texto);
-  const info = db
-    .prepare(
-      `INSERT INTO mensagens (ordem_id, etapa_id, direcao, conteudo, link_envio)
-       VALUES (?, ?, 'saida', ?, ?)`
-    )
-    .run(ordemId, etapaId, texto, link);
-  return info.lastInsertRowid;
+  const e = EVENTOS[evento](c);
+  const status = config.status();
+  const textoCompleto = `${e.texto}\n\nAcompanhe: ${c.link}`;
+
+  if (c.email && status.email.ativo) {
+    const texto = conviteLink
+      ? `${e.texto}\n\nCrie sua senha para ver todos os seus veículos e o histórico de serviços: ${conviteLink}`
+      : e.texto;
+    const id = inserir.run(ordemId, etapaId, 'email', c.email, e.assunto, texto, null).lastInsertRowid;
+    envio.enfileirar(id, { email: { link: c.link, botao: e.botao, titulo: e.assunto } });
+  }
+
+  if (status.whatsapp.ativo) {
+    const id = inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, null).lastInsertRowid;
+    envio.enfileirar(id, { parametros: [c.primeiro, e.resumo, c.link] });
+  } else {
+    // Sem a API da Meta: a mensagem fica pronta para a oficina enviar com um clique (WhatsApp Web/app).
+    inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, linkWhatsApp(c.telefone, textoCompleto));
+  }
 }
 
-/** Registra uma mensagem recebida do cliente (ex.: resposta ao orçamento). */
 function registrarEntrada(ordemId, etapaId, texto) {
   db.prepare(
-    `INSERT INTO mensagens (ordem_id, etapa_id, direcao, conteudo, status)
-     VALUES (?, ?, 'entrada', ?, 'recebida')`
+    "INSERT INTO mensagens (ordem_id, etapa_id, canal, direcao, conteudo, status) VALUES (?, ?, 'sistema', 'entrada', ?, 'recebida')"
   ).run(ordemId, etapaId, texto);
 }
 
-module.exports = { notificar, registrarEntrada, linkAcompanhamento, linkWhatsApp, moeda };
+module.exports = { notificar, registrarEntrada, linkAcompanhamento, moeda, EVENTOS };

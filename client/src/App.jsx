@@ -1,65 +1,73 @@
-import { NavLink, Outlet, Route, Routes, Link } from 'react-router-dom'
-import { useEffect, useState } from 'react'
-import { api } from './api'
-import Quadro from './pages/Quadro'
-import Ordem from './pages/Ordem'
-import NovaOrdem from './pages/NovaOrdem'
-import Clientes from './pages/Clientes'
-import Veiculos from './pages/Veiculos'
-import Mensagens from './pages/Mensagens'
-import Acompanhar from './pages/Acompanhar'
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { useAuth, areaDe } from './lib/auth'
+import { Esqueleto } from './ui/base'
+import Entrar from './acesso/Entrar'
+import CriarSenha from './acesso/CriarSenha'
+import LayoutOficina from './oficina/Layout'
+import LayoutCliente from './cliente/Layout'
 
-function Painel() {
-  const [pendentes, setPendentes] = useState(0)
-  useEffect(() => {
-    const atualizar = () => api.resumo().then((r) => setPendentes(r.mensagens_pendentes)).catch(() => {})
-    atualizar()
-    window.addEventListener('os:mudou', atualizar)
-    return () => window.removeEventListener('os:mudou', atualizar)
-  }, [])
+const Painel = lazy(() => import('./oficina/Painel'))
+const Quadro = lazy(() => import('./oficina/Quadro'))
+const Ordem = lazy(() => import('./oficina/Ordem'))
+const NovaOrdem = lazy(() => import('./oficina/NovaOrdem'))
+const Clientes = lazy(() => import('./oficina/Clientes'))
+const Veiculos = lazy(() => import('./oficina/Veiculos'))
+const Mensagens = lazy(() => import('./oficina/Mensagens'))
+const Equipe = lazy(() => import('./oficina/Equipe'))
+const Configuracoes = lazy(() => import('./oficina/Configuracoes'))
+const InicioCliente = lazy(() => import('./cliente/Inicio'))
+const OrdemCliente = lazy(() => import('./cliente/OrdemCliente'))
+const Acompanhar = lazy(() => import('./cliente/Acompanhar'))
 
-  return (
-    <div className="painel">
-      <a className="pular" href="#conteudo">Pular para o conteúdo</a>
-      <header className="lateral">
-        <Link to="/" className="marca">
-          <span className="marca-icone" aria-hidden="true" />
-          OficinaStatus
-        </Link>
-        <nav aria-label="Principal">
-          <NavLink to="/" end>Quadro</NavLink>
-          <NavLink to="/ordens/nova">Nova OS</NavLink>
-          <NavLink to="/mensagens">
-            Mensagens
-            {pendentes > 0 && <span className="contador" aria-label={`${pendentes} para enviar`}>{pendentes}</span>}
-          </NavLink>
-          <NavLink to="/veiculos">Veículos</NavLink>
-          <NavLink to="/clientes">Clientes</NavLink>
-        </nav>
-      </header>
-      <main id="conteudo" className="conteudo">
-        <Outlet />
-      </main>
-    </div>
-  )
+function Carregando() {
+  return <div className="p-8 space-y-4"><Esqueleto className="h-10 w-64" /><Esqueleto className="h-40" /><Esqueleto className="h-40" /></div>
+}
+
+/** Só deixa entrar quem tem um dos papéis; os outros vão para a área certa. */
+function Protegida({ papeis, children }) {
+  const { usuario, carregando } = useAuth()
+  const local = useLocation()
+  if (carregando) return <Carregando />
+  if (!usuario) return <Navigate to="/entrar" replace state={{ voltar: local.pathname }} />
+  if (!papeis.includes(usuario.papel)) return <Navigate to={areaDe(usuario)} replace />
+  return children
+}
+
+function Inicio() {
+  const { usuario, carregando } = useAuth()
+  if (carregando) return <Carregando />
+  return <Navigate to={usuario ? areaDe(usuario) : '/entrar'} replace />
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/acompanhar/:codigo" element={<Acompanhar />} />
-      <Route element={<Painel />}>
-        <Route index element={<Quadro />} />
-        <Route path="/ordens/nova" element={<NovaOrdem />} />
-        <Route path="/ordens/:id" element={<Ordem />} />
-        <Route path="/mensagens" element={<Mensagens />} />
-        <Route path="/veiculos" element={<Veiculos />} />
-        <Route path="/clientes" element={<Clientes />} />
-        <Route path="*" element={<p className="vazio">Página não encontrada. <Link to="/">Voltar ao quadro</Link></p>} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<Carregando />}>
+      <Routes>
+        <Route path="/" element={<Inicio />} />
+        <Route path="/entrar" element={<Entrar />} />
+        <Route path="/criar-senha/:token" element={<CriarSenha />} />
+        <Route path="/acompanhar/:codigo" element={<Acompanhar />} />
+
+        <Route path="/oficina" element={<Protegida papeis={['admin', 'mecanico']}><LayoutOficina /></Protegida>}>
+          <Route index element={<Painel />} />
+          <Route path="quadro" element={<Quadro />} />
+          <Route path="ordens/nova" element={<NovaOrdem />} />
+          <Route path="ordens/:id" element={<Ordem />} />
+          <Route path="clientes" element={<Clientes />} />
+          <Route path="veiculos" element={<Veiculos />} />
+          <Route path="mensagens" element={<Mensagens />} />
+          <Route path="equipe" element={<Protegida papeis={['admin']}><Equipe /></Protegida>} />
+          <Route path="configuracoes" element={<Configuracoes />} />
+        </Route>
+
+        <Route path="/cliente" element={<Protegida papeis={['cliente']}><LayoutCliente /></Protegida>}>
+          <Route index element={<InicioCliente />} />
+          <Route path="ordens/:id" element={<OrdemCliente />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
-
-/** Avisa o painel que algo mudou (atualiza o contador de mensagens). */
-export const avisarMudanca = () => window.dispatchEvent(new Event('os:mudou'))

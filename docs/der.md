@@ -3,22 +3,39 @@
 Versões em imagem para o relatório: [der.png](der.png) e [fluxo-estados.png](fluxo-estados.png).
 O GitHub também renderiza os diagramas abaixo diretamente a partir do código Mermaid.
 
+As cinco entidades exigidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) estão presentes. As três tabelas extras (`usuarios`, `itens_orcamento`, `fotos`) dão suporte ao login, ao orçamento por itens e às fotos.
+
 ```mermaid
 erDiagram
     CLIENTES ||--o{ VEICULOS : "possui"
+    CLIENTES ||--o| USUARIOS : "acessa o portal"
     VEICULOS ||--o{ ORDENS_SERVICO : "recebe"
-    ORDENS_SERVICO ||--|{ ETAPAS : "passa por (4)"
+    USUARIOS |o--o{ ORDENS_SERVICO : "é responsável (mecânico)"
+    ORDENS_SERVICO ||--|{ ETAPAS : "passa por (7)"
+    ORDENS_SERVICO ||--o{ ITENS_ORCAMENTO : "tem"
+    ORDENS_SERVICO ||--o{ FOTOS : "tem"
     ORDENS_SERVICO ||--o{ MENSAGENS : "gera"
     ETAPAS |o--o{ MENSAGENS : "notifica"
 
     CLIENTES {
         INTEGER id PK
-        TEXT nome "NOT NULL"
-        TEXT telefone "NOT NULL, WhatsApp com DDD"
+        TEXT nome
+        TEXT telefone "WhatsApp com DDD"
         TEXT email
+        TEXT cpf
         TEXT criado_em
     }
-
+    USUARIOS {
+        INTEGER id PK
+        TEXT nome
+        TEXT email "UNIQUE"
+        TEXT senha_hash "bcrypt"
+        TEXT papel "admin | mecanico | cliente"
+        INTEGER cliente_id FK "só para clientes"
+        TEXT convite_token "link de criar senha"
+        TEXT convite_expira
+        INTEGER ativo
+    }
     VEICULOS {
         INTEGER id PK
         INTEGER cliente_id FK
@@ -26,53 +43,69 @@ erDiagram
         TEXT tipo "cars | motorcycles | trucks"
         TEXT marca
         TEXT modelo
+        INTEGER ano_fabricacao
         INTEGER ano_modelo
         TEXT combustivel
         TEXT cor
         INTEGER quilometragem
-        TEXT fipe_codigo "da API FIPE"
-        TEXT fipe_ano_id "da API FIPE"
-        TEXT fipe_valor "da API FIPE"
-        TEXT fipe_mes_referencia "da API FIPE"
-        TEXT fipe_consultado_em
-        TEXT criado_em
+        TEXT fipe_codigo "API FIPE"
+        TEXT fipe_valor "API FIPE"
+        TEXT fipe_mes_referencia "API FIPE"
+        TEXT origem_dados "manual | fipe | placa"
     }
-
     ORDENS_SERVICO {
         INTEGER id PK
         INTEGER veiculo_id FK
+        INTEGER mecanico_id FK
         TEXT codigo_publico "UNIQUE, link do cliente"
         TEXT problema_relatado
-        TEXT orcamento_descricao
-        REAL orcamento_valor
+        TEXT diagnostico
+        INTEGER km_entrada
         TEXT previsao_entrega
+        INTEGER aguardando_peca
         TEXT situacao "aberta | recusada | finalizada"
         TEXT criado_em
-        TEXT atualizado_em
         TEXT entregue_em
     }
-
     ETAPAS {
         INTEGER id PK
         INTEGER ordem_id FK
-        TEXT tipo "orcamento | aprovacao | execucao | pronto"
-        INTEGER sequencia "1 a 4"
+        TEXT tipo "recebido ... entregue"
+        INTEGER sequencia "1 a 7"
         TEXT status "pendente | em_andamento | concluida | recusada"
         TEXT observacao
+        INTEGER responsavel_id FK
         TEXT iniciada_em
         TEXT concluida_em
     }
-
+    ITENS_ORCAMENTO {
+        INTEGER id PK
+        INTEGER ordem_id FK
+        TEXT tipo "peca | servico"
+        TEXT descricao
+        REAL quantidade
+        REAL valor_unitario
+        INTEGER aprovado "NULL | 1 | 0"
+    }
+    FOTOS {
+        INTEGER id PK
+        INTEGER ordem_id FK
+        TEXT arquivo
+        TEXT momento "entrada | diagnostico | execucao | entrega"
+        INTEGER enviada_por FK
+    }
     MENSAGENS {
         INTEGER id PK
         INTEGER ordem_id FK
         INTEGER etapa_id FK
+        TEXT canal "email | whatsapp | sistema"
         TEXT direcao "saida | entrada"
-        TEXT canal "whatsapp"
+        TEXT destinatario
+        TEXT assunto
         TEXT conteudo
-        TEXT link_envio "wa.me"
-        TEXT status "pendente | enviada | recebida"
-        TEXT criado_em
+        TEXT status "pendente | enviada | falhou | recebida"
+        TEXT erro
+        TEXT id_externo "id do SMTP ou da Meta"
         TEXT enviada_em
     }
 ```
@@ -81,24 +114,28 @@ erDiagram
 
 | Relação | Cardinalidade | Regra |
 |---|---|---|
-| Cliente → Veículos | 1 : N | Um cliente pode ter vários veículos; excluir o cliente exclui os veículos (`ON DELETE CASCADE`). |
-| Veículo → Ordens de serviço | 1 : N | Um veículo tem histórico de OS, mas só **uma OS aberta por vez** (regra na aplicação). |
-| Ordem de serviço → Etapas | 1 : 4 | Toda OS é criada com as 4 etapas; `UNIQUE (ordem_id, tipo)`. |
-| Ordem de serviço → Mensagens | 1 : N | Cada mudança de etapa gera uma mensagem de saída; a resposta do cliente gera uma de entrada. |
-| Etapa → Mensagens | 0..1 : N | A mensagem guarda qual etapa a originou (`ON DELETE SET NULL`). |
+| Cliente → Veículos | 1 : N | Excluir o cliente exclui os veículos (`ON DELETE CASCADE`). |
+| Cliente → Usuário | 1 : 0..1 | Clientes com e-mail ganham uma conta para o portal. |
+| Veículo → Ordens de serviço | 1 : N | Só **uma OS aberta por veículo** (regra na aplicação). |
+| Usuário (mecânico) → Ordens | 0..1 : N | Mecânico vê só as OS dele e as sem responsável. |
+| Ordem → Etapas | 1 : 7 | Toda OS nasce com as 7 etapas; `UNIQUE (ordem_id, tipo)`. |
+| Ordem → Itens de orçamento | 1 : N | O cliente aprova item por item. |
+| Ordem → Mensagens | 1 : N | Cada mudança de etapa gera uma mensagem por canal; o envio real fica registrado (`status`, `erro`, `id_externo`). |
 
 ## Fluxo de estados da OS
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Orcamento: abrir OS (avisa cliente)
+    [*] --> Diagnostico: abrir OS (Recebido ✓, avisa cliente)
+    Diagnostico --> Orcamento: registrar diagnóstico (avisa)
     Orcamento --> Aprovacao: enviar orçamento (pede aprovação)
-    Aprovacao --> Aprovacao: revisar orçamento
-    Aprovacao --> Aprovado: cliente aprova (link ou balcão)
-    Aprovacao --> Recusada: cliente recusa
-    Aprovado --> Execucao: iniciar serviço (avisa cliente)
-    Execucao --> Pronto: marcar como pronto (avisa cliente)
-    Pronto --> Entregue: registrar entrega
-    Recusada --> Entregue: registrar entrega
+    Aprovacao --> Orcamento: alterar itens
+    Aprovacao --> Aprovado: cliente aprova itens (link, portal ou balcão)
+    Aprovacao --> Recusada: cliente recusa tudo
+    Aprovado --> Execucao: iniciar serviço (avisa)
+    Execucao --> Execucao: peça (avisa)
+    Execucao --> Pronto: marcar como pronto (avisa)
+    Pronto --> Entregue: registrar entrega (avisa)
+    Recusada --> Entregue: registrar retirada
     Entregue --> [*]
 ```

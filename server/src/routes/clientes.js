@@ -1,55 +1,80 @@
 const router = require('express').Router();
 const db = require('../db');
+const auth = require('../services/auth');
+const envio = require('../services/envio');
+const config = require('../config');
 const { naoEncontrado, requisicaoInvalida, rota } = require('../errors');
 
-function validar({ nome, telefone, email }) {
+router.use(auth.equipe);
+
+function validar({ nome, telefone, email, cpf }) {
   if (!nome?.trim()) throw requisicaoInvalida('Informe o nome do cliente.');
-  const tel = String(telefone || '').replace(/\D/g, '');
-  if (tel.length < 10 || tel.length > 13) throw requisicaoInvalida('Informe um telefone com DDD (ex.: 42 99999-9999).');
+  const tel = String(telefone || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  if (tel.length < 10 || tel.length > 11) throw requisicaoInvalida('Informe o WhatsApp com DDD, ex.: (42) 99999-9999.');
   if (email && !/^\S+@\S+\.\S+$/.test(email)) throw requisicaoInvalida('E-mail inválido.');
-  return { nome: nome.trim(), telefone: tel, email: email?.trim() || null };
+  const c = String(cpf || '').replace(/\D/g, '');
+  if (c && c.length !== 11) throw requisicaoInvalida('CPF deve ter 11 dígitos.');
+  return { nome: nome.trim(), telefone: tel, email: email?.trim() || null, cpf: c || null };
 }
+
+const SELECT = `
+  SELECT c.*, COUNT(DISTINCT v.id) AS total_veiculos,
+         u.id AS usuario_id, u.senha_hash IS NOT NULL AS tem_acesso
+    FROM clientes c
+    LEFT JOIN veiculos v ON v.cliente_id = c.id
+    LEFT JOIN usuarios u ON u.cliente_id = c.id`;
 
 router.get('/', rota((req, res) => {
   const b = req.query.busca ? `%${req.query.busca}%` : '%';
-  res.json(
-    db.prepare(
-      `SELECT c.*, COUNT(v.id) AS total_veiculos
-         FROM clientes c LEFT JOIN veiculos v ON v.cliente_id = c.id
-        WHERE c.nome LIKE ? OR c.telefone LIKE ?
-        GROUP BY c.id ORDER BY c.nome`
-    ).all(b, b)
-  );
+  res.json(db.prepare(`${SELECT} WHERE c.nome LIKE ? OR c.telefone LIKE ? OR IFNULL(c.email,'') LIKE ? GROUP BY c.id ORDER BY c.nome`).all(b, b, b));
 }));
 
 router.get('/:id', rota((req, res) => {
-  const c = db.prepare('SELECT * FROM clientes WHERE id = ?').get(req.params.id);
+  const c = db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id`).get(req.params.id);
   if (!c) throw naoEncontrado('Cliente');
   c.veiculos = db.prepare('SELECT * FROM veiculos WHERE cliente_id = ? ORDER BY id DESC').all(c.id);
   res.json(c);
 }));
 
-router.post('/', rota((req, res) => {
-  const d = validar(req.body);
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO clientes (nome, telefone, email) VALUES (?, ?, ?)')
-    .run(d.nome, d.telefone, d.email);
-  res.status(201).json(db.prepare('SELECT * FROM clientes WHERE id = ?').get(lastInsertRowid));
-}));
+const salvar = db.transaction((id, d) => {
+  if (id) {
+    const r = db.prepare('UPDATE clientes SET nome = ?, telefone = ?, email = ?, cpf = ? WHERE id = ?').run(d.nome, d.telefone, d.email, d.cpf, id);
+    if (!r.changes) throw naoEncontrado('Cliente');
+  } else {
+    id = db.prepare('INSERT INTO clientes (nome, telefone, email, cpf) VALUES (?, ?, ?, ?)').run(d.nome, d.telefone, d.email, d.cpf).lastInsertRowid;
+  }
+  auth.garantirContaCliente(id);
+  return db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id`).get(id);
+});
 
-router.put('/:id', rota((req, res) => {
-  const d = validar(req.body);
-  const r = db
-    .prepare('UPDATE clientes SET nome = ?, telefone = ?, email = ? WHERE id = ?')
-    .run(d.nome, d.telefone, d.email, req.params.id);
-  if (!r.changes) throw naoEncontrado('Cliente');
-  res.json(db.prepare('SELECT * FROM clientes WHERE id = ?').get(req.params.id));
-}));
+router.post('/', rota((req, res) => res.status(201).json(salvar(null, validar(req.body)))));
+router.put('/:id', rota((req, res) => res.json(salvar(req.params.id, validar(req.body)))));
 
-router.delete('/:id', rota((req, res) => {
+router.delete('/:id', auth.exigir('admin'), rota((req, res) => {
   const r = db.prepare('DELETE FROM clientes WHERE id = ?').run(req.params.id);
   if (!r.changes) throw naoEncontrado('Cliente');
   res.status(204).end();
+}));
+
+// Gera o link para o cliente criar a senha do portal (e envia por e-mail, se configurado)
+router.post('/:id/convite', rota(async (req, res) => {
+  const conta = auth.garantirContaCliente(req.params.id);
+  if (!conta) throw requisicaoInvalida('Cadastre um e-mail para o cliente ter acesso ao portal.');
+  const link = auth.gerarConvite(conta.id);
+  let email_enviado = false;
+  if (config.status().email.ativo) {
+    email_enviado = await envio.enviarEmail({
+      para: conta.email,
+      assunto: `Seu acesso ao portal — ${config.oficina().nome}`,
+      titulo: 'Acompanhe seus veículos online',
+      texto: `Olá, ${conta.nome.split(' ')[0]}! Crie sua senha para acompanhar os serviços, aprovar orçamentos e ver o histórico dos seus veículos.\nO link vale por 7 dias.`,
+      link,
+      botao: 'Criar minha senha',
+    }).then(() => true).catch(() => false);
+  }
+  const texto = `Olá, ${conta.nome.split(' ')[0]}! Crie sua senha para acompanhar seus veículos na ${config.oficina().nome}: ${link}`;
+  const cliente = db.prepare('SELECT telefone FROM clientes WHERE id = ?').get(req.params.id);
+  res.json({ link_convite: link, email_enviado, link_whatsapp: `https://wa.me/${envio.numeroWhats(cliente.telefone)}?text=${encodeURIComponent(texto)}` });
 }));
 
 module.exports = router;
