@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const multer = require('multer');
 const router = require('express').Router();
 const ordens = require('../services/ordens');
+const avarias = require('../services/avarias');
+const catalogo = require('../services/catalogo');
 const auth = require('../services/auth');
 const config = require('../config');
 const { rota, requisicaoInvalida } = require('../errors');
@@ -44,6 +46,16 @@ router.post('/:id/peca', acao((req) => ordens.definirAguardandoPeca(req.params.i
 router.post('/:id/pronto', acao((req) => ordens.concluirExecucao(req.params.id, req.body, req.usuario)));
 router.post('/:id/entrega', acao((req) => ordens.registrarEntrega(req.params.id, req.usuario)));
 router.post('/:id/responsavel', acao((req) => ordens.atribuir(req.params.id, req.body, req.usuario)));
+
+// Vistoria 3D
+router.get('/:id/avarias/sugestao', rota((req, res) => {
+  ordens.buscar(req.params.id, req.usuario);
+  res.json(catalogo.sugerir(req.query.zona, req.query.tipo, req.query.gravidade));
+}));
+router.post('/:id/avarias', rota((req, res) => { avarias.criar(req.params.id, req.body, req.usuario); res.status(201).json(d(req)); }));
+router.put('/:id/avarias/:avaria', acao((req) => avarias.editar(req.params.id, req.params.avaria, req.body, req.usuario)));
+router.delete('/:id/avarias/:avaria', acao((req) => avarias.remover(req.params.id, req.params.avaria, req.usuario)));
+router.post('/:id/avarias/orcamento', acao((req) => avarias.gerarOrcamento(req.params.id, req.usuario)));
 
 router.post('/:id/fotos', upload.array('fotos', 10), rota((req, res) => {
   if (!req.files?.length) throw requisicaoInvalida('Selecione ao menos uma foto.');

@@ -3,7 +3,7 @@
 Versões em imagem para o relatório: [der.png](der.png) e [fluxo-estados.png](fluxo-estados.png).
 O GitHub também renderiza os diagramas abaixo diretamente a partir do código Mermaid.
 
-As cinco entidades exigidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) estão presentes. As três tabelas extras (`usuarios`, `itens_orcamento`, `fotos`) dão suporte ao login, ao orçamento por itens e às fotos.
+As cinco entidades exigidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) estão presentes. As tabelas extras dão suporte ao login (`usuarios`), ao orçamento por itens (`itens_orcamento`), às fotos (`fotos`) e à vistoria 3D (`avarias`, `avaria_servicos` e `catalogo_servicos`).
 
 ```mermaid
 erDiagram
@@ -16,6 +16,10 @@ erDiagram
     ORDENS_SERVICO ||--o{ FOTOS : "tem"
     ORDENS_SERVICO ||--o{ MENSAGENS : "gera"
     ETAPAS |o--o{ MENSAGENS : "notifica"
+    ORDENS_SERVICO ||--o{ AVARIAS : "vistoria 3D"
+    AVARIAS ||--|{ AVARIA_SERVICOS : "precisa de"
+    CATALOGO_SERVICOS |o--o{ AVARIA_SERVICOS : "preço de"
+    AVARIAS |o--o{ ITENS_ORCAMENTO : "gera"
 
     CLIENTES {
         INTEGER id PK
@@ -86,6 +90,7 @@ erDiagram
         REAL quantidade
         REAL valor_unitario
         INTEGER aprovado "NULL | 1 | 0"
+        INTEGER avaria_id FK "quando veio da vistoria"
     }
     FOTOS {
         INTEGER id PK
@@ -93,6 +98,33 @@ erDiagram
         TEXT arquivo
         TEXT momento "entrada | diagnostico | execucao | entrega"
         INTEGER enviada_por FK
+    }
+    AVARIAS {
+        INTEGER id PK
+        INTEGER ordem_id FK
+        INTEGER numero "nº do pino"
+        TEXT zona "peça: porta_dianteira_direita..."
+        TEXT tipo "amassado | risco | trinca | quebra | corrosao | pintura"
+        TEXT gravidade "leve | moderada | grave"
+        REAL pos_x_y_z "ponto no modelo 3D"
+        REAL nor_x_y_z "normal da superfície"
+        INTEGER orcada
+    }
+    AVARIA_SERVICOS {
+        INTEGER id PK
+        INTEGER avaria_id FK
+        INTEGER catalogo_id FK
+        TEXT descricao
+        REAL valor
+        INTEGER minutos
+    }
+    CATALOGO_SERVICOS {
+        INTEGER id PK
+        TEXT codigo "martelinho, pintura..."
+        TEXT zona "grupo de peça"
+        TEXT nome
+        REAL valor
+        INTEGER minutos
     }
     MENSAGENS {
         INTEGER id PK

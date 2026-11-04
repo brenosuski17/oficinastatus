@@ -70,6 +70,15 @@ export const api = {
   entrega: (id) => post(`/ordens/${id}/entrega`),
   responsavel: (id, mecanico_id) => post(`/ordens/${id}/responsavel`, { mecanico_id }),
   fotos: (id, form) => req('POST', `/ordens/${id}/fotos`, form),
+  avarias: {
+    sugestao: (id, q) => get(`/ordens/${id}/avarias/sugestao`, q),
+    criar: (id, d) => post(`/ordens/${id}/avarias`, d),
+    editar: (id, a, d) => req('PUT', `/ordens/${id}/avarias/${a}`, d),
+    remover: (id, a) => req('DELETE', `/ordens/${id}/avarias/${a}`),
+    gerarOrcamento: (id) => post(`/ordens/${id}/avarias/orcamento`),
+  },
+  catalogo: (f) => get('/catalogo', f),
+  salvarServicoCatalogo: (id, d) => req('PUT', `/catalogo/${id}`, d),
 
   clientes: (busca) => get('/clientes', { busca }),
   cliente: (id) => get(`/clientes/${id}`),

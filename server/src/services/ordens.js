@@ -99,6 +99,7 @@ function detalhe(id, usuario) {
     itens: db.prepare('SELECT * FROM itens_orcamento WHERE ordem_id = ? ORDER BY tipo DESC, id').all(id),
     fotos: db.prepare('SELECT f.*, u.nome AS enviada_por_nome FROM fotos f LEFT JOIN usuarios u ON u.id = f.enviada_por WHERE ordem_id = ? ORDER BY id').all(id),
     mensagens: db.prepare('SELECT * FROM mensagens WHERE ordem_id = ? ORDER BY id DESC').all(id),
+    avarias: require('./avarias').listar(id), // require tardio: avarias.js depende deste módulo
   };
 }
 
@@ -175,8 +176,8 @@ const adicionarItem = db.transaction((id, item, usuario) => {
   const o = buscar(id, usuario);
   abrirEdicaoOrcamento(o);
   const d = validarItem(item);
-  db.prepare('INSERT INTO itens_orcamento (ordem_id, tipo, descricao, quantidade, valor_unitario) VALUES (?, ?, ?, ?, ?)')
-    .run(id, d.tipo, d.descricao, d.quantidade, d.valor_unitario);
+  db.prepare('INSERT INTO itens_orcamento (ordem_id, tipo, descricao, quantidade, valor_unitario, avaria_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, d.tipo, d.descricao, d.quantidade, d.valor_unitario, item.avaria_id || null);
   tocar(id);
 });
 
@@ -332,6 +333,7 @@ function visaoCliente(o) {
     itens: oculto ? [] : d.itens.map(({ id, tipo, descricao, quantidade, valor_unitario, aprovado }) => ({ id, tipo, descricao, quantidade, valor_unitario, aprovado })),
     total: oculto ? null : d.total,
     total_aprovado: d.total_aprovado,
+    avarias: require('./avarias').visaoCliente(d.id, !oculto),
     fotos: d.fotos.map(({ id, arquivo, legenda, momento, criado_em }) => ({ id, arquivo, legenda, momento, criado_em })),
     etapas: d.etapas.map(({ tipo, status, observacao, iniciada_em, concluida_em }) => ({ tipo, status, observacao, iniciada_em, concluida_em })),
   };

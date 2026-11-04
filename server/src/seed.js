@@ -105,9 +105,28 @@ const o5 = ordens.criar({ veiculo_id: V[4], problema_relatado: 'Motor falhando n
 ordens.registrarDiagnostico(o5, { diagnostico: 'Velas desgastadas e bico injetor do cilindro 2 com vazão baixa.' }, admin);
 item(o5, 'peca', 'Jogo de velas', 1, 132);
 
+// OS com vistoria 3D: batida leve, orçamento gerado pelas avarias e aguardando o cliente
+const avarias = require('./services/avarias');
+const catalogo = require('./services/catalogo');
+const cidF = cliente.run('Fernanda Costa', '42999770007', 'fernanda@cliente.com').lastInsertRowid;
+usuario.run('Fernanda Costa', 'fernanda@cliente.com', hash, 'cliente', cidF);
+const vF = veiculo.run(cidF, 'FRN7C30', 'VW - VolksWagen', 'Polo Track 1.0 Flex 12V 5p', 2023, 2023, 'Prata', 22100).lastInsertRowid;
+db.prepare("UPDATE veiculos SET fipe_codigo = '005569-0', fipe_valor = 'R$ 81.200,00', fipe_mes_referencia = 'novembro de 2026', origem_dados = 'fipe' WHERE id = ?").run(vF);
+const o6 = ordens.criar({ veiculo_id: vF, problema_relatado: 'Batida leve no estacionamento, lado direito e frente.', km_entrada: 22140, mecanico_id: mecA }, admin);
+const marcar = (zona, tipo, gravidade, posicao, normal, observacao) => {
+  const { servicos, pre } = catalogo.sugerir(zona, tipo, gravidade);
+  avarias.criar(o6, { zona, tipo, gravidade, posicao, normal, observacao, servicos: servicos.filter((x) => pre.includes(x.id)).map((x) => ({ catalogo_id: x.id })) }, mecanicoA);
+};
+marcar('porta_dianteira_direita', 'amassado', 'moderada', { x: 0.42, y: 0.68, z: 0.962 }, { x: 0, y: 0, z: 1 }, 'Amassado perto da maçaneta');
+marcar('para_lama_dianteiro_direita', 'risco', 'moderada', { x: 1.62, y: 0.72, z: 0.962 }, { x: 0, y: 0, z: 1 });
+marcar('para_choque_dianteiro', 'trinca', 'leve', { x: 2.225, y: 0.47, z: 0.42 }, { x: 1, y: 0, z: 0 });
+marcar('farol_direita', 'trinca', 'grave', { x: 2.2, y: 0.74, z: 0.6 }, { x: 0.85, y: 0.53, z: 0 }, 'Lente trincada');
+avarias.gerarOrcamento(o6, mecanicoA);
+ordens.enviarOrcamento(o6, { previsao_entrega: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) }, admin);
+
 db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = criado_em WHERE direcao = 'saida' AND ordem_id NOT IN (?, ?)").run(o2, o3);
 
 console.log(`Banco de demonstração criado.
   Oficina:  admin@oficina.com (admin) · arthur@oficina.com e rafael@oficina.com (mecânicos)
-  Clientes: ana@cliente.com, joao@cliente.com, marcia@cliente.com, luciana@cliente.com
+  Clientes: ana@cliente.com, joao@cliente.com, marcia@cliente.com, luciana@cliente.com, fernanda@cliente.com (vistoria 3D)
   Senha de todos: ${SENHA}`);

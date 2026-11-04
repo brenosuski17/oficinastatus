@@ -18,6 +18,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 - **Quadro** com cada carro na coluna da sua etapa e a "estrada" de progresso de cada OS.
 - **Abertura de OS pela placa:** se o carro já veio antes, aparece na hora. Se for novo, a consulta por placa (PlacaFipe) preenche marca, modelo, ano e cor, e a busca na **API FIPE** traz o valor de referência.
 - **7 etapas:** recebido → diagnóstico → orçamento → aprovação → execução (com "aguardando peça") → pronto → entregue. O servidor não deixa pular etapas.
+- **Vistoria 3D:** um carro em 3D, modelado no próprio sistema, em que o mecânico clica no ponto danificado. A peça é reconhecida sozinha (porta dianteira direita, capô, farol…). Ele escolhe o tipo de avaria e a gravidade, e o sistema sugere os serviços da tabela de preços, com valor e tempo. **Gerar orçamento** transforma as avarias em itens da OS e, se ela estiver no diagnóstico, já o conclui. O cliente vê o carro com os pontos marcados no portal.
 - **Orçamento por itens**, com peças e mão de obra separadas.
 - **Mecânico responsável:** cada mecânico vê só as OS dele e as que ainda não têm responsável.
 - **Fotos** da entrada, do diagnóstico, da execução e da entrega, tiradas direto pelo celular.
@@ -35,7 +36,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 |---|---|
 | Back-end | Node.js 22+, Express, better-sqlite3, JWT (jsonwebtoken), bcrypt, Nodemailer, Multer |
 | Banco de dados | SQLite (`server/data/oficina.db`, criado automaticamente) |
-| Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide |
+| Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide, Three.js + React Three Fiber (vistoria 3D) |
 | APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · WhatsApp Cloud API (Meta) |
 | Testes | `node:test`, com servidores SMTP e HTTP locais que recebem as mesmas requisições que os serviços reais |
 
@@ -55,7 +56,7 @@ Abra **http://localhost:5173**.
 - **Sem o seed:** a primeira tela pede para criar a conta do administrador.
 - **Com o seed (demonstração):** use a senha `oficina123` em todas as contas.
   - Oficina: `admin@oficina.com` (administrador), `arthur@oficina.com` e `rafael@oficina.com` (mecânicos).
-  - Clientes: `ana@cliente.com`, `joao@cliente.com` (tem orçamento para aprovar), `marcia@cliente.com` e `luciana@cliente.com`.
+  - Clientes: `ana@cliente.com`, `joao@cliente.com` (tem orçamento para aprovar), `marcia@cliente.com`, `luciana@cliente.com` e `fernanda@cliente.com` (OS 16, com vistoria 3D e orçamento gerado pelas avarias).
 
 Para rodar como em produção, com um único servidor entregando a API e o site: `npm run build` e depois `npm start`. Acesse http://localhost:3333 e ajuste `APP_URL` no `.env`.
 
@@ -120,11 +121,12 @@ oficinastatus/
 │   │       ├── placa.js          # consulta por placa (PlacaFipe)
 │   │       ├── fipe.js           # API FIPE (Parallelum) com cache
 │   │       └── relatorios.js     # indicadores do painel
-│   └── test/fluxo.test.js        # fluxo completo pela API
+│   └── test/                     # fluxo completo e vistoria pela API
 ├── client/src/
 │   ├── acesso/                   # entrar, primeiro acesso, criar senha
 │   ├── oficina/                  # painel, quadro, OS, nova OS, cadastros, equipe, integrações
 │   ├── cliente/                  # portal, detalhe da OS, página do link
+│   ├── vistoria/                 # carro 3D, detecção da peça, painel de avarias
 │   ├── ui/                       # placa Mercosul, trilha de etapas, botões, modais, avisos
 │   └── lib/                      # API, login, formatos, etapas
 └── docs/                         # DER, fluxo de estados e telas
@@ -132,7 +134,7 @@ oficinastatus/
 
 ## Banco de dados
 
-O banco tem as cinco entidades pedidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) e mais `usuarios`, `itens_orcamento` e `fotos`. Detalhes e cardinalidades estão em [docs/der.md](docs/der.md).
+O banco tem as cinco entidades pedidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) e mais `usuarios`, `itens_orcamento`, `fotos`, `avarias`, `avaria_servicos` e `catalogo_servicos` (tabela de preços). Detalhes e cardinalidades estão em [docs/der.md](docs/der.md).
 
 ![DER](docs/der.png)
 
@@ -147,6 +149,7 @@ Todas as rotas começam com `/api`. As rotas da oficina e do portal exigem o cab
 | Etapas | `POST /ordens/:id/diagnostico` · `/itens` · `/orcamento/enviar` · `/aprovacao` · `/execucao` · `/peca` · `/pronto` · `/entrega` · `/responsavel` · `/fotos` | equipe |
 | Cadastros | `/clientes`, `/clientes/:id/convite`, `/veiculos`, `GET /veiculos/placa/:placa` | equipe |
 | FIPE | `GET /fipe/:tipo/marcas[/:marca/modelos[/:modelo/anos[/:ano]]]` | equipe |
+| Vistoria 3D | `GET /ordens/:id/avarias/sugestao?zona=&tipo=&gravidade=`, `POST /ordens/:id/avarias`, `PUT\|DELETE /ordens/:id/avarias/:avaria`, `POST /ordens/:id/avarias/orcamento`, `GET /catalogo`, `PUT /catalogo/:id` (admin) | equipe |
 | Mensagens | `GET /mensagens`, `POST /mensagens/:id/enviada`, `POST /mensagens/:id/reenviar` | equipe |
 | Gestão | `GET /relatorios/painel`, `/equipe`, `GET /integracoes`, `POST /integracoes/teste-email\|teste-whatsapp` | admin |
 | Portal | `GET /portal/resumo`, `GET /portal/ordens/:id`, `POST /portal/ordens/:id/resposta` | cliente |

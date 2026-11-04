@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   ChevronLeft, Stethoscope, Send, ThumbsUp, ThumbsDown, Play, PackageSearch, PackageCheck, CircleCheckBig, KeyRound,
-  Camera, Link2, Copy, Phone, Mail, Gauge, CalendarClock, ImagePlus,
+  Camera, Link2, Copy, Phone, Mail, Gauge, CalendarClock, ImagePlus, Box,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -15,6 +15,8 @@ import { useToast } from '../ui/Toast'
 import Orcamento from './Orcamento'
 import Mensagem from './Mensagem'
 import { avisarMudanca } from './Layout'
+
+const Vistoria = lazy(() => import('../vistoria/Vistoria'))
 
 /** Cartão colorido com a cor da etapa atual. */
 function Caixa({ e, titulo, texto, children }) {
@@ -35,7 +37,7 @@ function Caixa({ e, titulo, texto, children }) {
 }
 
 /** Painel com a próxima ação da etapa atual. */
-function ProximaAcao({ o, executar, ocupado, abrirAprovacao }) {
+function ProximaAcao({ o, executar, ocupado, abrirAprovacao, abrirVistoria }) {
   const [diag, setDiag] = useState(o.diagnostico || '')
   const [previsao, setPrevisao] = useState(o.previsao_entrega || '')
   const e = ESTADOS[o.etapa_atual]
@@ -43,10 +45,13 @@ function ProximaAcao({ o, executar, ocupado, abrirAprovacao }) {
   switch (o.etapa_atual) {
     case 'diagnostico':
       return (
-        <Caixa e={e} titulo="Registrar o diagnóstico" texto="Descreva o que foi encontrado. O cliente é avisado e a OS segue para o orçamento.">
+        <Caixa e={e} titulo="Registrar o diagnóstico" texto="Marque as avarias na vistoria 3D e gere o orçamento direto dela, ou descreva o que foi encontrado. O cliente é avisado a cada passo.">
           <form onSubmit={(ev) => { ev.preventDefault(); executar(() => api.diagnostico(o.id, { diagnostico: diag }), 'Diagnóstico registrado. Cliente avisado.') }} className="space-y-3">
-            <textarea className="entrada !border-white/30" rows={3} required value={diag} onChange={(ev) => setDiag(ev.target.value)} placeholder="Ex.: pastilhas no limite, disco com desgaste irregular" aria-label="Diagnóstico" />
-            <Botao type="submit" variante="secundario" icone={Stethoscope} carregando={ocupado} className="!border-white">Concluir diagnóstico</Botao>
+            <textarea className="entrada !border-white/30" rows={2} required value={diag} onChange={(ev) => setDiag(ev.target.value)} placeholder="Ex.: pastilhas no limite, disco com desgaste irregular" aria-label="Diagnóstico" />
+            <div className="flex flex-wrap gap-2">
+              <Botao type="button" variante="secundario" icone={Box} onClick={abrirVistoria} className="!border-white">Abrir vistoria 3D</Botao>
+              <Botao type="submit" variante="fantasma" icone={Stethoscope} carregando={ocupado} className="!text-white hover:!bg-white/15">Concluir só com o texto</Botao>
+            </div>
           </form>
         </Caixa>
       )
@@ -186,7 +191,7 @@ function Fotos({ o, aoAtualizar }) {
   )
 }
 
-const ABAS = [['resumo', 'Resumo'], ['orcamento', 'Orçamento'], ['fotos', 'Fotos'], ['historico', 'Histórico']]
+const ABAS = [['resumo', 'Resumo'], ['vistoria', 'Vistoria 3D'], ['orcamento', 'Orçamento'], ['fotos', 'Fotos'], ['historico', 'Histórico']]
 
 export default function Ordem() {
   const { id } = useParams()
@@ -207,7 +212,7 @@ export default function Ordem() {
   if (carregando && !o) return <div className="space-y-4"><Esqueleto className="h-24" /><Esqueleto className="h-28" /><Esqueleto className="h-64" /></div>
 
   const linkCliente = `${window.location.origin}/acompanhar/${o.codigo_publico}`
-  const contagem = { orcamento: o.itens.length, fotos: o.fotos.length, historico: o.mensagens.length }
+  const contagem = { vistoria: o.avarias.length, orcamento: o.itens.length, fotos: o.fotos.length, historico: o.mensagens.length }
 
   return (
     <>
@@ -237,7 +242,7 @@ export default function Ordem() {
         <div className="min-w-[560px]"><Trilha etapas={o.etapas} situacao={o.situacao} aguardandoPeca={o.aguardando_peca} /></div>
       </section>
 
-      <div className="mt-4"><ProximaAcao key={`${o.etapa_atual}-${o.atualizado_em}`} o={o} executar={executar} ocupado={ocupado} abrirAprovacao={() => setAprovando(true)} /></div>
+      <div className="mt-4"><ProximaAcao key={`${o.etapa_atual}-${o.atualizado_em}`} o={o} executar={executar} ocupado={ocupado} abrirAprovacao={() => setAprovando(true)} abrirVistoria={() => setAba('vistoria')} /></div>
       {aprovando && <AprovacaoManual o={o} aberto={aprovando} aoFechar={() => setAprovando(false)} executar={executar} />}
 
       <div className="mt-6 flex gap-1 border-b border-linha overflow-x-auto" role="tablist">
@@ -289,6 +294,11 @@ export default function Ordem() {
                 </section>
               </aside>
             </div>
+          )}
+          {aba === 'vistoria' && (
+            <Suspense fallback={<Esqueleto className="h-[680px] !rounded-[28px] !bg-[#0b1233]" />}>
+              <Vistoria o={o} aoAtualizar={(r) => { setDados(r); avisarMudanca() }} aoGerar={() => setAba('orcamento')} />
+            </Suspense>
           )}
           {aba === 'orcamento' && <section className="cartao p-6"><Orcamento o={o} aoAtualizar={setDados} /></section>}
           {aba === 'fotos' && <section className="cartao p-6"><Fotos o={o} aoAtualizar={setDados} /></section>}

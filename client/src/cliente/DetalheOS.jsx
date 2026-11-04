@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Package, Wrench, ThumbsUp, ThumbsDown, PackageSearch, MessageCircle, Phone, Check, X, CalendarClock } from 'lucide-react'
 import { ESTADOS } from '../lib/etapas'
 import { dataHora, dia, moeda, nomeVeiculo, telefone } from '../lib/formato'
 import { Botao, Modal, Placa } from '../ui/base'
 import { Trilha, LinhaDoTempo } from '../ui/Trilha'
+
+const VistoriaCliente = lazy(() => import('../vistoria/VistoriaCliente'))
 
 function textoEstado(o) {
   if (o.aguardando_peca) return ['Aguardando uma peça', 'O serviço continua assim que a peça chegar. Avisamos você.']
@@ -46,7 +48,7 @@ function AprovarOrcamento({ o, aoResponder }) {
             <li key={i.id}>
               <button type="button" onClick={() => setMarcados({ ...marcados, [i.id]: !on })} aria-pressed={on}
                 className={`w-full flex items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition ${on ? 'border-ultramar-500 bg-ultramar-50/70' : 'border-linha bg-white opacity-70'}`}>
-                <span className={`grid place-items-center size-10 shrink-0 rounded-xl ${i.tipo === 'peca' ? 'bg-[#e0f2fe] text-orcamento' : 'bg-[#f4f0ff] text-diagnostico'}`}>
+                <span className={`hidden sm:grid place-items-center size-10 shrink-0 rounded-xl ${i.tipo === 'peca' ? 'bg-[#e0f2fe] text-orcamento' : 'bg-[#f4f0ff] text-diagnostico'}`}>
                   {i.tipo === 'peca' ? <Package className="size-5" /> : <Wrench className="size-5" />}
                 </span>
                 <span className="flex-1 min-w-0">
@@ -124,6 +126,12 @@ export default function DetalheOS({ o, aoResponder }) {
       <section className="cartao px-3 sm:px-6 pt-10 pb-5">
         <Trilha etapas={o.etapas} situacao={o.situacao} aguardandoPeca={o.aguardando_peca} compacta />
       </section>
+
+      {o.avarias?.length > 0 && (
+        <Suspense fallback={<div className="h-[420px] rounded-[28px] bg-[#0b1233] animate-pulse" />}>
+          <VistoriaCliente avarias={o.avarias} />
+        </Suspense>
+      )}
 
       {o.etapa_atual === 'aprovacao' && o.situacao === 'aberta' && <AprovarOrcamento o={o} aoResponder={aoResponder} />}
 

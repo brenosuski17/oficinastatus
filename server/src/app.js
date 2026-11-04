@@ -19,6 +19,7 @@ app.use('/api/veiculos', require('./routes/veiculos'));
 app.use('/api/ordens', require('./routes/ordens'));
 app.use('/api/mensagens', diversos.mensagens);
 app.use('/api/fipe', diversos.fipe);
+app.use('/api/catalogo', diversos.catalogo);
 app.use('/api/portal', diversos.portal);
 app.use('/api/publico', diversos.publico);
 app.use('/api', diversos.admin);

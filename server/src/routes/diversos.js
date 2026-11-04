@@ -53,6 +53,19 @@ fipeR.get('/:tipo/marcas/:marca/modelos/:modelo/anos', rota(async (req, res) => 
 fipeR.get('/:tipo/marcas/:marca/modelos/:modelo/anos/:ano', rota(async (req, res) =>
   res.json(await fipe.valor(req.params.tipo, req.params.marca, req.params.modelo, req.params.ano))));
 
+// ------------------------------------------------------------- tabela de preços (catálogo de serviços)
+const catalogoR = express.Router();
+const catalogo = require('../services/catalogo');
+catalogoR.get('/', auth.equipe, rota((req, res) => res.json(catalogo.listar(req.query))));
+catalogoR.put('/:id', auth.somenteAdmin, rota((req, res) => {
+  const v = Number(req.body.valor);
+  const m = Number(req.body.minutos);
+  if (!(v >= 0) || !(m >= 0)) throw requisicaoInvalida('Valor e tempo devem ser números positivos.');
+  const r = db.prepare('UPDATE catalogo_servicos SET valor = ?, minutos = ?, nome = COALESCE(?, nome) WHERE id = ?').run(v, Math.round(m), req.body.nome?.trim() || null, req.params.id);
+  if (!r.changes) throw naoEncontrado('Serviço');
+  res.json(db.prepare('SELECT * FROM catalogo_servicos WHERE id = ?').get(req.params.id));
+}));
+
 // ------------------------------------------------------------- relatórios e integrações (admin)
 const admin = express.Router();
 admin.get('/relatorios/painel', auth.somenteAdmin, rota((req, res) => res.json(relatorios.painel(req.usuario, Number(req.query.meses) || 6))));
@@ -105,4 +118,4 @@ publico.post('/ordens/:codigo/resposta', rota((req, res) => {
   res.json({ ...ordens.visaoCliente(o), oficina: config.oficina() });
 }));
 
-module.exports = { mensagens, fipe: fipeR, admin, portal, publico };
+module.exports = { mensagens, fipe: fipeR, admin, portal, publico, catalogo: catalogoR };

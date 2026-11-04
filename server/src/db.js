@@ -123,6 +123,46 @@ CREATE TABLE IF NOT EXISTS mensagens (
   enviada_em    TEXT
 );
 
+-- Vistoria 3D: cada ponto marcado no carro é uma avaria, com os serviços escolhidos para ela
+CREATE TABLE IF NOT EXISTS avarias (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordem_id    INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+  numero      INTEGER NOT NULL,                  -- nº exibido no pino (1, 2, 3…)
+  zona        TEXT NOT NULL,                     -- peça do carro (porta_dianteira_direita, capo…)
+  tipo        TEXT NOT NULL CHECK (tipo IN ('amassado','risco','trinca','quebra','corrosao','pintura')),
+  gravidade   TEXT NOT NULL CHECK (gravidade IN ('leve','moderada','grave')),
+  pos_x REAL NOT NULL, pos_y REAL NOT NULL, pos_z REAL NOT NULL,  -- ponto no modelo 3D
+  nor_x REAL NOT NULL DEFAULT 0, nor_y REAL NOT NULL DEFAULT 1, nor_z REAL NOT NULL DEFAULT 0,
+  observacao  TEXT,
+  orcada      INTEGER NOT NULL DEFAULT 0,        -- 1 = já virou itens do orçamento
+  criado_por  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ordem_id, numero)
+);
+
+-- Tabela de preços da oficina: serviços por peça
+CREATE TABLE IF NOT EXISTS catalogo_servicos (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo    TEXT NOT NULL,                       -- martelinho, recuperacao, pintura…
+  zona      TEXT NOT NULL,                       -- grupo de peça (porta_dianteira, capo, para_brisa…)
+  nome      TEXT NOT NULL,
+  valor     REAL NOT NULL CHECK (valor >= 0),
+  minutos   INTEGER NOT NULL DEFAULT 60,
+  ativo     INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (codigo, zona)
+);
+
+CREATE TABLE IF NOT EXISTS avaria_servicos (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  avaria_id    INTEGER NOT NULL REFERENCES avarias(id) ON DELETE CASCADE,
+  catalogo_id  INTEGER REFERENCES catalogo_servicos(id) ON DELETE SET NULL,
+  descricao    TEXT NOT NULL,
+  valor        REAL NOT NULL CHECK (valor >= 0),
+  minutos      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_avarias_ordem ON avarias(ordem_id);
+CREATE INDEX IF NOT EXISTS idx_avaria_serv ON avaria_servicos(avaria_id);
 CREATE INDEX IF NOT EXISTS idx_veiculos_cliente ON veiculos(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_ordens_veiculo   ON ordens_servico(veiculo_id);
 CREATE INDEX IF NOT EXISTS idx_ordens_mecanico  ON ordens_servico(mecanico_id);
@@ -132,4 +172,12 @@ CREATE INDEX IF NOT EXISTS idx_fotos_ordem      ON fotos(ordem_id);
 CREATE INDEX IF NOT EXISTS idx_mensagens_ordem  ON mensagens(ordem_id);
 `);
 
+// Migração: bancos criados antes da vistoria 3D não têm o vínculo item ↔ avaria
+if (!db.prepare('PRAGMA table_info(itens_orcamento)').all().some((c) => c.name === 'avaria_id')) {
+  db.exec('ALTER TABLE itens_orcamento ADD COLUMN avaria_id INTEGER REFERENCES avarias(id) ON DELETE SET NULL');
+}
+
 module.exports = db;
+
+// Preenche a tabela de preços na primeira execução
+require('./services/catalogo').garantirCatalogo();
