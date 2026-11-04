@@ -1,0 +1,15 @@
+{
+  "name": "oficinastatus",
+  "private": true,
+  "description": "Acompanhamento de ordens de serviço para oficina mecânica",
+  "scripts": {
+    "instalar": "npm install && npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -n api,web -c yellow,blue \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "seed": "npm run seed --prefix server",
+    "build": "npm run build --prefix client",
+    "start": "npm start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
