@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { ScanSearch, Search, CarFront, CircleAlert, ArrowRight, Pencil } from 'lucide-react'
 import { api } from '../lib/api'
@@ -17,7 +17,7 @@ function EntradaPlaca({ valor, aoMudar, buscando }) {
   const exibido = valor.length > 3 && /\d/.test(valor[4] || '') ? `${valor.slice(0, 3)}-${valor.slice(3)}` : valor
   return (
     <div className="relative mx-auto w-full max-w-[420px]">
-      <div className="rounded-2xl border-[3px] border-[#1b1f2b] bg-white overflow-hidden shadow-[0_24px_50px_-24px_rgba(18,26,51,.45)] focus-within:ring-8 focus-within:ring-ultramar-100 transition">
+      <div className="rounded-2xl border-[3px] border-[#1b1f2b] bg-superficie overflow-hidden shadow-[0_24px_50px_-24px_rgba(18,26,51,.45)] focus-within:ring-8 focus-within:ring-ultramar-100 transition">
         <div className="bg-[#0b3d91] text-white text-center text-[13px] font-bold tracking-[0.35em] py-1.5">BRASIL</div>
         <input
           ref={ref}
@@ -45,7 +45,8 @@ export default function NovaOrdem() {
   const avisar = useToast()
   const { usuario } = useAuth()
   const { dados: mecanicos } = useDados(() => api.mecanicos(), [])
-  const [placa, setPlaca] = useState('')
+  const [q] = useSearchParams()
+  const [placa, setPlaca] = useState(limparPlaca(q.get('placa') || ''))
   const [busca, setBusca] = useState({ estado: 'ocioso' }) // ocioso | buscando | cadastrado | consulta | manual
   const [veiculo, setVeiculo] = useState(null)
   const [os, setOs] = useState({ problema_relatado: '', km_entrada: '', previsao_entrega: '', mecanico_id: usuario.papel === 'mecanico' ? usuario.id : '' })
@@ -74,7 +75,7 @@ export default function NovaOrdem() {
       const nova = await api.criarOrdem({ ...os, veiculo_id: veiculo.id })
       avisarMudanca()
       avisar(`OS ${nova.id} aberta. O cliente foi avisado.`)
-      navegar(`/oficina/ordens/${nova.id}`)
+      navegar(q.get('inspecao') ? `/oficina/inspecao/${nova.id}` : `/oficina/ordens/${nova.id}`)
     } catch (err) { avisar(err.message, 'erro'); setAbrindo(false) }
   }
 
@@ -102,10 +103,10 @@ export default function NovaOrdem() {
                   <p className="font-bold text-[17px]">{nomeVeiculo(veiculo)} {veiculo.ano_modelo || ''}</p>
                   <p className="text-tinta-2">{veiculo.cliente_nome} · {telefone(veiculo.cliente_telefone)}</p>
                 </div>
-                <span className="rounded-full bg-[#ecfdf3] text-[#067647] text-[12.5px] font-bold px-3 py-1">Já cadastrado</span>
+                <span className="rounded-full bg-ok-bg text-ok text-[12.5px] font-bold px-3 py-1">Já cadastrado</span>
               </div>
               {veiculo.os_aberta && (
-                <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-[#fffaeb] text-[#93370d] px-4 py-3">
+                <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-alerta-bg text-alerta px-4 py-3">
                   <CircleAlert className="size-5" />Este veículo já está na oficina.
                   <Link to={`/oficina/ordens/${veiculo.os_aberta}`} className="font-bold underline">Abrir a OS {veiculo.os_aberta}</Link>
                 </p>

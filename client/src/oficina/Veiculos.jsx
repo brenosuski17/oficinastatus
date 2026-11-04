@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { Search, Plus, Pencil, Trash2, CarFront, Wrench } from 'lucide-react'
+import { Search, Plus, Pencil, Trash2, CarFront, ScanLine, History, Phone } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { nomeVeiculo } from '../lib/formato'
-import { Botao, Cabecalho, ErroCarga, Esqueleto, Modal, Placa, Vazio, useDados, lista, itemLista } from '../ui/base'
+import { dataCurta, nomeVeiculo, telefone } from '../lib/formato'
+import { Botao, Cabecalho, ErroCarga, Esqueleto, Modal, Placa, Selo, Vazio, useDados, lista, itemLista } from '../ui/base'
 import { useToast } from '../ui/Toast'
+import { corDaPintura } from '../vistoria/carrocerias'
 import VeiculoForm from './VeiculoForm'
 
-const TIPO = { cars: 'Carro', motorcycles: 'Moto', trucks: 'Caminhão' }
+const CARROCERIA = { hatch: 'Hatch', sedan: 'Sedã', suv: 'SUV', picape: 'Picape' }
 
 export default function Veiculos() {
   const { usuario } = useAuth()
@@ -25,41 +26,55 @@ export default function Veiculos() {
 
   return (
     <>
-      <Cabecalho titulo="Veículos" sub="Cadastro com valor de referência da tabela FIPE.">
-        <label className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-[18px] text-tinta-3" />
-          <input type="search" className="entrada !pl-10 w-[280px] max-w-full" placeholder="Placa, modelo ou dono" aria-label="Buscar veículos" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        </label>
-        <Botao as={Link} to="/oficina/ordens/nova" icone={Plus}>Cadastrar pela placa</Botao>
+      <p className="text-[12px] font-bold tracking-[0.16em] text-tinta-3">CADASTROS</p>
+      <Cabecalho titulo="Veículos" sub={`${dados?.length ?? '—'} veículos cadastrados · clientes e placas`}>
+        <Botao as={Link} to="/oficina/ordens/nova" icone={Plus}>Novo veículo</Botao>
       </Cabecalho>
+      <label className="relative block max-w-[520px] mb-6">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-[18px] text-tinta-3" />
+        <input type="search" className="entrada !pl-10 !h-12" placeholder="Buscar por cliente, placa ou modelo" aria-label="Buscar veículos" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </label>
 
       {erro && <ErroCarga erro={erro} tentar={recarregar} />}
-      {carregando && !dados && <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{[1, 2, 3].map((i) => <Esqueleto key={i} className="h-44" />)}</div>}
+      {carregando && !dados && <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{[1, 2, 3].map((i) => <Esqueleto key={i} className="h-60 !rounded-3xl" />)}</div>}
       {dados?.length === 0 && <Vazio icone={CarFront} titulo={busca ? 'Nenhum veículo encontrado' : 'Nenhum veículo ainda'} texto="Digite a placa em Nova OS para cadastrar." />}
 
       {dados?.length > 0 && (
         <motion.ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" variants={lista} initial="initial" animate="animate">
-          {dados.map((v) => (
-            <motion.li key={v.id} variants={itemLista} className="cartao p-5 flex flex-col">
-              <div className="flex items-start justify-between gap-3">
-                <Placa placa={v.placa} tamanho="m" />
-                {v.os_aberta
-                  ? <Link to={`/oficina/ordens/${v.os_aberta}`} className="inline-flex items-center gap-1 rounded-full bg-sinal-50 text-[#c4410a] text-[12.5px] font-bold px-2.5 py-1"><Wrench className="size-3.5" />Na oficina</Link>
-                  : <span className="text-[12.5px] font-semibold text-tinta-3">{TIPO[v.tipo]}</span>}
-              </div>
-              <p className="font-bold text-[16px] mt-4 leading-snug">{nomeVeiculo(v)}</p>
-              <p className="text-[14px] text-tinta-2">{[v.ano_modelo, v.cor, v.quilometragem && `${v.quilometragem.toLocaleString('pt-BR')} km`].filter(Boolean).join(' · ')}</p>
-              <p className="text-[14px] text-tinta-3 mt-1">Dono: {v.cliente_nome}</p>
-              <div className="mt-4 rounded-xl bg-fundo px-4 py-3 flex items-baseline justify-between">
-                <span className="text-[13px] font-semibold text-tinta-3">Valor FIPE</span>
-                {v.fipe_valor ? <span className="font-extrabold num">{v.fipe_valor}</span> : <span className="text-[13.5px] text-tinta-3">não consultado</span>}
-              </div>
-              <div className="flex gap-1 mt-4 pt-4 border-t border-linha">
-                <Botao variante="fantasma" tamanho="p" icone={Pencil} onClick={() => setEditando(v)}>Editar</Botao>
-                {usuario.papel === 'admin' && <Botao variante="fantasma" tamanho="p" icone={Trash2} className="ml-auto hover:!text-recusada" onClick={() => excluir(v)} aria-label={`Excluir ${v.placa}`} />}
-              </div>
-            </motion.li>
-          ))}
+          {dados.map((v) => {
+            const linkInspecao = v.os_aberta ? `/oficina/inspecao/${v.os_aberta}` : `/oficina/ordens/nova?placa=${v.placa}&inspecao=1`
+            return (
+              <motion.li key={v.id} variants={itemLista} className="rounded-3xl border border-linha bg-superficie/80 p-5 flex flex-col hover:border-linha-forte transition">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-extrabold text-[17px] leading-snug truncate">{nomeVeiculo(v)}</p>
+                    <p className="flex items-center gap-1.5 text-[13.5px] text-tinta-3 mt-0.5">
+                      <span className="size-2.5 rounded-full ring-1 ring-white/20" style={{ background: corDaPintura(v.cor) }} />
+                      {[v.ano_modelo, v.cor, v.quilometragem && `${v.quilometragem.toLocaleString('pt-BR')} km`].filter(Boolean).join(' · ') || CARROCERIA[v.carroceria]}
+                    </p>
+                  </div>
+                  <Placa placa={v.placa} tamanho="m" />
+                </div>
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] mt-3">
+                  <span className="font-semibold">{v.cliente_nome}</span>
+                  <span className="flex items-center gap-1.5 text-tinta-3"><Phone className="size-3.5" />{telefone(v.cliente_telefone)}</span>
+                </p>
+                <div className="mt-4 rounded-2xl bg-white/[.03] border border-linha px-4 py-3 flex items-center justify-between gap-3">
+                  <span className="text-[13.5px] text-tinta-2">
+                    {v.ultima_os ? `Última inspeção ${dataCurta(v.ultima_os_data)}` : 'Sem inspeções'}
+                    <span className="block text-tinta-3">{v.total_os} no histórico · {CARROCERIA[v.carroceria] || 'Hatch'}</span>
+                  </span>
+                  {v.ultima_os && <Selo estado={v.ultima_os_etapa} />}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Botao as={Link} to={linkInspecao} icone={ScanLine} className="flex-1">Inspeção 3D</Botao>
+                  <Botao as={Link} to={`/oficina/historico?placa=${v.placa}`} variante="secundario" className="!px-3" aria-label={`Histórico de ${v.placa}`} title="Histórico"><History className="size-[18px]" /></Botao>
+                  <Botao variante="secundario" className="!px-3" onClick={() => setEditando(v)} aria-label={`Editar ${v.placa}`} title="Editar"><Pencil className="size-[18px]" /></Botao>
+                  {usuario.papel === 'admin' && <Botao variante="secundario" className="!px-3 hover:!text-erro" onClick={() => excluir(v)} aria-label={`Excluir ${v.placa}`} title="Excluir"><Trash2 className="size-[18px]" /></Botao>}
+                </div>
+              </motion.li>
+            )
+          })}
         </motion.ul>
       )}
 

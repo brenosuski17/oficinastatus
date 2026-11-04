@@ -15,7 +15,7 @@ function Ficha({ o }) {
     <motion.li layout layoutId={`os-${o.id}`} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: 'spring', stiffness: 380, damping: 32 }}>
       <Link to={`/oficina/ordens/${o.id}`}
-        className="group block rounded-2xl bg-white border border-linha p-4 shadow-[0_1px_2px_rgba(18,26,51,.04)] hover:shadow-[0_12px_28px_-12px_rgba(18,26,51,.25)] hover:-translate-y-0.5 transition-all relative overflow-hidden">
+        className="group block rounded-2xl bg-superficie border border-linha p-4 shadow-[0_1px_2px_rgba(18,26,51,.04)] hover:shadow-[0_12px_28px_-12px_rgba(18,26,51,.25)] hover:-translate-y-0.5 transition-all relative overflow-hidden">
         <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: o.aguardando_peca ? 'var(--color-sinal)' : e.cor }} />
         <div className="flex items-center justify-between gap-2">
           <Placa placa={o.placa} tamanho="p" />
@@ -26,9 +26,9 @@ function Ficha({ o }) {
         </div>
         <p className="font-bold text-[15px] leading-snug mt-3 line-clamp-2">{nomeVeiculo(o)}</p>
         <p className="text-[13.5px] text-tinta-2 mt-0.5 truncate">{o.cliente_nome}</p>
-        {!o.mecanico_nome && <p className="mt-2 inline-flex rounded-lg bg-[#fffaeb] text-[#b54708] px-2 py-0.5 text-[12px] font-bold">Sem responsável</p>}
+        {!o.mecanico_nome && <p className="mt-2 inline-flex rounded-lg bg-alerta-bg text-alerta px-2 py-0.5 text-[12px] font-bold">Sem responsável</p>}
         {o.aguardando_peca && (
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sinal-50 text-[#c4410a] px-2 py-1 text-[12.5px] font-bold"><PackageSearch className="size-3.5" />Aguardando peça</p>
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sinal-50 text-peca px-2 py-1 text-[12.5px] font-bold"><PackageSearch className="size-3.5" />Aguardando peça</p>
         )}
         <div className="mt-3"><MiniTrilha etapas={o.etapas} situacao={o.situacao} /></div>
         <div className="flex items-center justify-between mt-3 text-[12.5px] text-tinta-3">
@@ -81,12 +81,12 @@ export default function Quadro() {
                 const e = ESTADOS[col]
                 const lista = ordens.filter((o) => o.situacao === 'aberta' && o.etapa_atual === col)
                 return (
-                  <motion.section key={col} className="snap-start rounded-3xl bg-[#e9ecf5]/70 p-3 min-h-[180px]" aria-labelledby={`c-${col}`}
+                  <motion.section key={col} className="snap-start rounded-3xl bg-trilho p-3 min-h-[180px]" aria-labelledby={`c-${col}`}
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: ci * 0.05, type: 'spring', stiffness: 260, damping: 26 }}>
                     <header className="flex items-center gap-2.5 px-2 pt-1 pb-3">
                       <span className="grid place-items-center size-8 rounded-xl text-white" style={{ background: e.cor }}><e.icone className="size-4" /></span>
                       <h2 id={`c-${col}`} className="font-bold text-[15px] flex-1">{e.nome}</h2>
-                      <span className="min-w-7 h-7 px-2 grid place-items-center rounded-full bg-white text-[13px] font-bold num">{lista.length}</span>
+                      <span className="min-w-7 h-7 px-2 grid place-items-center rounded-full bg-superficie text-[13px] font-bold num">{lista.length}</span>
                     </header>
                     <ul className="space-y-3">
                       <AnimatePresence>{lista.map((o) => <Ficha key={o.id} o={o} />)}</AnimatePresence>

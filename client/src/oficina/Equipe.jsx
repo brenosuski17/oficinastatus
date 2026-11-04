@@ -41,7 +41,7 @@ export default function Equipe() {
                 <p className="font-bold">{m.nome} {m.id === usuario.id && <span className="text-tinta-3 font-medium">(você)</span>}</p>
                 <p className="text-[14px] text-tinta-3">{m.email}{!m.tem_senha && ' · ainda não criou a senha'}</p>
               </div>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${m.papel === 'admin' ? 'bg-ultramar-50 text-ultramar-700' : 'bg-sinal-50 text-[#c4410a]'}`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ${m.papel === 'admin' ? 'bg-ultramar-50 text-ultramar-700' : 'bg-sinal-50 text-peca'}`}>
                 {m.papel === 'admin' ? <ShieldCheck className="size-4" /> : <Wrench className="size-4" />}{m.papel === 'admin' ? 'Administrador' : 'Mecânico'}
               </span>
               <span className="text-[14px] text-tinta-2 num w-28">{m.os_abertas} OS abertas</span>
@@ -76,7 +76,7 @@ export default function Equipe() {
         {convite && (
           <div className="space-y-4">
             <p className="text-tinta-2">Envie para <strong className="text-tinta">{convite.nome}</strong> criar a senha. Vale por 7 dias.</p>
-            {convite.email_enviado && <p className="rounded-xl bg-[#ecfdf3] text-[#067647] px-4 py-3 font-semibold">Também enviado por e-mail.</p>}
+            {convite.email_enviado && <p className="rounded-xl bg-ok-bg text-ok px-4 py-3 font-semibold">Também enviado por e-mail.</p>}
             <p className="rounded-xl bg-fundo px-4 py-3 text-[14px] break-all font-mono">{convite.link_convite}</p>
             <Botao variante="secundario" icone={Copy} onClick={() => navigator.clipboard?.writeText(convite.link_convite).then(() => avisar('Link copiado.'))}>Copiar link</Botao>
           </div>

@@ -14,11 +14,11 @@ export default function Mensagens() {
   return (
     <>
       <Cabecalho titulo="Mensagens" sub="Avisos de cada etapa enviados aos clientes, com o resultado real de cada envio.">
-        <div className="flex gap-1 rounded-2xl bg-[#e6e9f2] p-1 overflow-x-auto" role="tablist">
+        <div className="flex gap-1 rounded-2xl bg-trilho p-1 overflow-x-auto" role="tablist">
           {FILTROS.map(([v, n]) => (
             <button key={v} role="tab" aria-selected={status === v} onClick={() => setStatus(v)}
               className={`relative h-9 px-3.5 rounded-xl text-[14px] font-bold whitespace-nowrap ${status === v ? 'text-tinta' : 'text-tinta-3 hover:text-tinta-2'}`}>
-              {status === v && <motion.span layoutId="filtro-msg" className="absolute inset-0 rounded-xl bg-white shadow-sm" />}
+              {status === v && <motion.span layoutId="filtro-msg" className="absolute inset-0 rounded-xl bg-superficie shadow-sm" />}
               <span className="relative">{n}</span>
             </button>
           ))}

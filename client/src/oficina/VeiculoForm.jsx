@@ -104,7 +104,7 @@ function BuscaFipe({ tipo, marcaSugerida, aoEncontrar }) {
   }
 
   return (
-    <fieldset className="rounded-2xl border border-[#cfe0ff] bg-gradient-to-br from-[#f3f7ff] to-white p-4">
+    <fieldset className="rounded-2xl border border-ultramar-100 bg-gradient-to-br from-ultramar-50 to-superficie p-4">
       <legend className="sr-only">Tabela FIPE</legend>
       <div className="flex items-center justify-between gap-3 mb-3">
         <p className="font-bold">Tabela FIPE <span className="font-normal text-tinta-3 text-[14px]">· preenche modelo e valor de referência</span></p>
@@ -130,12 +130,12 @@ function BuscaFipe({ tipo, marcaSugerida, aoEncontrar }) {
           </select>
         </Campo>
       </div>
-      {erro && <p className="mt-3 text-[14px] text-[#b42318]" role="alert">{erro} Você pode preencher os campos à mão.</p>}
+      {erro && <p className="mt-3 text-[14px] text-erro" role="alert">{erro} Você pode preencher os campos à mão.</p>}
     </fieldset>
   )
 }
 
-const VAZIO = { cliente_id: null, placa: '', tipo: 'cars', marca: '', modelo: '', ano_fabricacao: '', ano_modelo: '', combustivel: '', cor: '', quilometragem: '', origem_dados: 'manual' }
+const VAZIO = { carroceria: 'hatch', cliente_id: null, placa: '', tipo: 'cars', marca: '', modelo: '', ano_fabricacao: '', ano_modelo: '', combustivel: '', cor: '', quilometragem: '', origem_dados: 'manual' }
 
 /** Formulário de veículo: dados da placa (quando houver) + FIPE + ajustes manuais. */
 export default function VeiculoForm({ inicial, fipeMarca, aoSalvar, aoCancelar, travarPlaca }) {
@@ -165,10 +165,10 @@ export default function VeiculoForm({ inicial, fipeMarca, aoSalvar, aoCancelar, 
   return (
     <form onSubmit={enviar} className="space-y-5">
       {v.origem_dados === 'placa' && (
-        <p className="flex items-center gap-2 rounded-xl bg-[#ecfdf3] text-[#067647] px-4 py-3 text-[14.5px] font-semibold"><BadgeCheck className="size-5" />Dados preenchidos pela consulta da placa. Confira e escolha o modelo na FIPE para ter o valor de referência.</p>
+        <p className="flex items-center gap-2 rounded-xl bg-ok-bg text-ok px-4 py-3 text-[14.5px] font-semibold"><BadgeCheck className="size-5" />Dados preenchidos pela consulta da placa. Confira e escolha o modelo na FIPE para ter o valor de referência.</p>
       )}
       <ClienteCampo valor={v.cliente_id} aoMudar={(cliente_id) => setV((x) => ({ ...x, cliente_id }))} />
-      <div className="grid sm:grid-cols-[200px_200px_1fr] gap-3">
+      <div className="grid sm:grid-cols-3 gap-3">
         <Campo rotulo="Placa" erro={v.placa.length === 7 && !placaOk ? 'Formato inválido' : undefined}>
           <input className="entrada font-placa !text-[22px] tracking-[0.12em] uppercase" required maxLength={8} disabled={travarPlaca}
             value={v.placa} onChange={(e) => { const p = limparPlaca(e.target.value); setV((x) => ({ ...x, placa: p })) }} />
@@ -176,6 +176,11 @@ export default function VeiculoForm({ inicial, fipeMarca, aoSalvar, aoCancelar, 
         <Campo rotulo="Tipo">
           <select className="entrada" value={v.tipo} onChange={set('tipo')}>
             <option value="cars">Carro</option><option value="motorcycles">Moto</option><option value="trucks">Caminhão</option>
+          </select>
+        </Campo>
+        <Campo rotulo="Modelo 3D (carroceria)" dica="Usado na inspeção 3D">
+          <select className="entrada" value={v.carroceria || 'hatch'} onChange={set('carroceria')}>
+            <option value="hatch">Hatch</option><option value="sedan">Sedã</option><option value="suv">SUV</option><option value="picape">Picape</option>
           </select>
         </Campo>
       </div>

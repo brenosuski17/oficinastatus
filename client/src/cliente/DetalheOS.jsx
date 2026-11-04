@@ -47,8 +47,8 @@ function AprovarOrcamento({ o, aoResponder }) {
           return (
             <li key={i.id}>
               <button type="button" onClick={() => setMarcados({ ...marcados, [i.id]: !on })} aria-pressed={on}
-                className={`w-full flex items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition ${on ? 'border-ultramar-500 bg-ultramar-50/70' : 'border-linha bg-white opacity-70'}`}>
-                <span className={`hidden sm:grid place-items-center size-10 shrink-0 rounded-xl ${i.tipo === 'peca' ? 'bg-[#e0f2fe] text-orcamento' : 'bg-[#f4f0ff] text-diagnostico'}`}>
+                className={`w-full flex items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition ${on ? 'border-ultramar-500 bg-ultramar-50/70' : 'border-linha bg-superficie opacity-70'}`}>
+                <span className={`hidden sm:grid place-items-center size-10 shrink-0 rounded-xl ${i.tipo === 'peca' ? 'bg-orcamento/15 text-orcamento' : 'bg-diagnostico/15 text-diagnostico'}`}>
                   {i.tipo === 'peca' ? <Package className="size-5" /> : <Wrench className="size-5" />}
                 </span>
                 <span className="flex-1 min-w-0">
@@ -56,7 +56,7 @@ function AprovarOrcamento({ o, aoResponder }) {
                   <span className="block text-[13px] text-tinta-3">{i.tipo === 'peca' ? 'Peça' : 'Mão de obra'}{i.quantidade !== 1 ? ` · ${i.quantidade.toLocaleString('pt-BR')} × ${moeda(i.valor_unitario)}` : ''}</span>
                 </span>
                 <span className="font-bold num shrink-0">{moeda(i.quantidade * i.valor_unitario)}</span>
-                <motion.span className={`grid place-items-center size-6 rounded-full shrink-0 ${on ? 'bg-ultramar-600 text-white' : 'border-2 border-[#cfd5e4]'}`} animate={{ scale: on ? [1, 1.2, 1] : 1 }}>
+                <motion.span className={`grid place-items-center size-6 rounded-full shrink-0 ${on ? 'bg-ultramar-600 text-white' : 'border-2 border-linha-forte'}`} animate={{ scale: on ? [1, 1.2, 1] : 1 }}>
                   {on && <Check className="size-3.5" strokeWidth={3.5} />}
                 </motion.span>
               </button>
@@ -111,7 +111,7 @@ export default function DetalheOS({ o, aoResponder }) {
         <div className="absolute -right-16 -top-16 size-56 rounded-full bg-white/10" />
         <div className="absolute right-10 -bottom-20 size-40 rounded-full bg-white/10" />
         <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div className="bg-white/95 rounded-xl p-1"><Placa placa={o.veiculo.placa} tamanho="m" /></div>
+          <div className="bg-superficie/95 rounded-xl p-1"><Placa placa={o.veiculo.placa} tamanho="m" /></div>
           <span className="text-[14px] font-semibold text-white/80">OS {o.id}</span>
         </div>
         <p className="relative text-white/85 font-semibold mt-5">{nomeVeiculo(o.veiculo)}{o.veiculo.ano_modelo ? ` ${o.veiculo.ano_modelo}` : ''}</p>
@@ -129,7 +129,7 @@ export default function DetalheOS({ o, aoResponder }) {
 
       {o.avarias?.length > 0 && (
         <Suspense fallback={<div className="h-[420px] rounded-[28px] bg-[#0b1233] animate-pulse" />}>
-          <VistoriaCliente avarias={o.avarias} />
+          <VistoriaCliente avarias={o.avarias} carroceria={o.veiculo.carroceria} cor={o.veiculo.cor} />
         </Suspense>
       )}
 

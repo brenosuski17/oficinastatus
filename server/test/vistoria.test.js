@@ -96,6 +96,23 @@ test('marca avarias e gera o orçamento a partir delas', async () => {
   assert.equal((await chamar('POST', `/ordens/${osId}/avarias`, { ...ponto, zona: 'capo', tipo: 'risco', gravidade: 'leve', servicos: [{ descricao: 'x', valor: 1 }] })).status, 409);
 });
 
+test('serviço sem avaria e categorias da tabela de preços', async () => {
+  const c = (await chamar('POST', '/clientes', { nome: 'Outro', telefone: '42988880000' })).dados;
+  const v = (await chamar('POST', '/veiculos', { cliente_id: c.id, placa: 'SED1A23', marca: 'Toyota', modelo: 'Corolla', carroceria: 'sedan' })).dados;
+  assert.equal(v.carroceria, 'sedan');
+  const os2 = (await chamar('POST', '/ordens', { veiculo_id: v.id, problema_relatado: 'Revisão' })).dados.id;
+  const sug = (await chamar('GET', `/ordens/${os2}/avarias/sugestao?zona=roda_dianteira_direita&tipo=servico&gravidade=leve`)).dados;
+  assert.equal(sug.pre.length, 0);
+  const alinh = sug.servicos.find((s) => s.codigo === 'alinhamento');
+  const r = await chamar('POST', `/ordens/${os2}/avarias`, { posicao: { x: 1.3, y: 0.3, z: 0.9 }, zona: 'roda_dianteira_direita', tipo: 'servico', servicos: [{ catalogo_id: alinh.id }] });
+  assert.equal(r.status, 201);
+  assert.equal(r.dados.avarias[0].tipo_nome, 'Serviço sem avaria');
+  const cats = (await chamar('GET', '/catalogo/categorias')).dados;
+  assert.ok(cats.find((x) => x.categoria === 'funilaria').total > 10);
+  const pint = (await chamar('GET', '/catalogo?categoria=vidros')).dados;
+  assert.ok(pint.every((x) => x.categoria === 'vidros') && pint[0].aplica_se);
+});
+
 test('a página do cliente mostra as avarias marcadas', async () => {
   const { dados: o } = await chamar('GET', `/ordens/${osId}`);
   const pub = (await chamar('GET', `/publico/ordens/${o.codigo_publico}`)).dados;

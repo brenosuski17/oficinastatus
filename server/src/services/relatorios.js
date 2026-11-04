@@ -15,6 +15,12 @@ function painel(usuario, meses = 6) {
        FROM itens_orcamento i JOIN ordens_servico o ON o.id = i.ordem_id
       WHERE i.aprovado = 1 AND o.situacao = 'finalizada' AND strftime('%Y-%m', o.entregue_em, '-3 hours') = strftime('%Y-%m', 'now', '-3 hours')`
   ).v;
+  const faturamentoAnterior = um(
+    `SELECT COALESCE(SUM(i.quantidade * i.valor_unitario), 0) v
+       FROM itens_orcamento i JOIN ordens_servico o ON o.id = i.ordem_id
+      WHERE i.aprovado = 1 AND o.situacao = 'finalizada'
+        AND strftime('%Y-%m', o.entregue_em, '-3 hours') = strftime('%Y-%m', date('now', '-3 hours', 'start of month', '-1 month'))`
+  ).v;
   const entreguesMes = um(
     `SELECT COUNT(*) n FROM ordens_servico WHERE situacao = 'finalizada' AND strftime('%Y-%m', entregue_em, '-3 hours') = strftime('%Y-%m', 'now', '-3 hours')`
   ).n;
@@ -58,8 +64,40 @@ function painel(usuario, meses = 6) {
       GROUP BY lower(descricao) ORDER BY vezes DESC, valor DESC LIMIT 5`
   ).all();
 
+  // Situação das OS do mês (abertas por etapa + encerradas no mês)
+  const encerradasMes = db.prepare(
+    `SELECT situacao, COUNT(*) n FROM ordens_servico
+      WHERE situacao <> 'aberta' AND strftime('%Y-%m', COALESCE(entregue_em, atualizado_em), '-3 hours') = strftime('%Y-%m', 'now', '-3 hours')
+      GROUP BY situacao`
+  ).all();
+  const situacoes = [
+    { chave: 'aguardando', nome: 'Aguardando aprovação', total: porEtapa.aprovacao || 0 },
+    { chave: 'aprovado', nome: 'Aprovado', total: porEtapa.aprovado || 0 },
+    { chave: 'execucao', nome: 'Em execução', total: porEtapa.execucao || 0 },
+    { chave: 'elaboracao', nome: 'Em elaboração', total: (porEtapa.diagnostico || 0) + (porEtapa.orcamento || 0) + (porEtapa.recebido || 0) },
+    { chave: 'finalizado', nome: 'Finalizado', total: (encerradasMes.find((e) => e.situacao === 'finalizada')?.n || 0) + (porEtapa.pronto || 0) },
+    { chave: 'recusado', nome: 'Recusado', total: encerradasMes.find((e) => e.situacao === 'recusada')?.n || 0 },
+  ];
+
+  const patio = abertas.map((o) => ({
+    id: o.id, placa: o.placa, marca: o.marca, modelo: o.modelo, cliente_nome: o.cliente_nome,
+    etapa_atual: o.etapa_atual, aguardando_peca: o.aguardando_peca, atualizado_em: o.atualizado_em,
+  }));
+  const inspecoes = db.prepare(
+    `SELECT o.id, v.placa, v.marca, v.modelo, c.nome AS cliente_nome, COUNT(a.id) AS qtd_avarias,
+            MAX(a.criado_em) AS ultima, o.criado_em
+       FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id
+       LEFT JOIN avarias a ON a.ordem_id = o.id
+      GROUP BY o.id ORDER BY COALESCE(MAX(a.criado_em), o.criado_em) DESC LIMIT 6`
+  ).all();
+
   return {
+    situacoes,
+    patio,
+    inspecoes,
     kpis: {
+      faturamento_mes_anterior: faturamentoAnterior,
+      variacao_faturamento: faturamentoAnterior ? (faturamentoMes - faturamentoAnterior) / faturamentoAnterior : null,
       na_oficina: abertas.length,
       aguardando_cliente: porEtapa.aprovacao || 0,
       prontos: porEtapa.pronto || 0,

@@ -47,7 +47,7 @@ export default function Configuracoes() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="font-bold text-[17px]">{i.nome}</h2>
                         {st.ativo
-                          ? <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] text-[#067647] text-[12.5px] font-bold px-2.5 py-0.5"><CircleCheck className="size-3.5" />Ativo</span>
+                          ? <span className="inline-flex items-center gap-1 rounded-full bg-ok-bg text-ok text-[12.5px] font-bold px-2.5 py-0.5"><CircleCheck className="size-3.5" />Ativo</span>
                           : <span className="inline-flex items-center gap-1 rounded-full bg-fundo text-tinta-3 text-[12.5px] font-bold px-2.5 py-0.5"><CircleDashed className="size-3.5" />Não configurado</span>}
                       </div>
                       <p className="text-tinta-2 text-[14.5px] mt-1">{i.texto}</p>

@@ -4,7 +4,7 @@ const ordens = require('./ordens');
 const catalogo = require('./catalogo');
 const { requisicaoInvalida, conflito, naoEncontrado } = require('../errors');
 
-const NOMES_TIPO = { amassado: 'Amassado', risco: 'Risco', trinca: 'Trinca', quebra: 'Quebra', corrosao: 'Corrosão', pintura: 'Pintura danificada' };
+const NOMES_TIPO = { amassado: 'Amassado', risco: 'Risco', trinca: 'Trinca', quebra: 'Quebra', corrosao: 'Corrosão', pintura: 'Pintura danificada', servico: 'Serviço sem avaria' };
 const ETAPAS_EDITAVEIS = ['recebido', 'diagnostico', 'orcamento', 'aprovacao'];
 
 function listar(ordemId) {
@@ -32,6 +32,7 @@ function exigirEditavel(o) {
 function validar(d) {
   if (!catalogo.zonaInfo(d.zona)) throw requisicaoInvalida('Peça do veículo inválida.');
   if (!catalogo.TIPOS.includes(d.tipo)) throw requisicaoInvalida('Escolha o tipo de avaria.');
+  if (d.tipo === 'servico') d.gravidade = 'leve'; // serviço sem avaria não tem gravidade
   if (!catalogo.GRAVIDADES.includes(d.gravidade)) throw requisicaoInvalida('Escolha a gravidade.');
   const num = (v, padrao) => (Number.isFinite(Number(v)) ? Number(v) : padrao);
   const pos = d.posicao || {};
@@ -117,7 +118,7 @@ const gerarOrcamento = db.transaction((ordemId, usuario) => {
   if (o.situacao !== 'aberta') throw conflito('Esta ordem de serviço já foi encerrada.');
 
   if (o.etapa_atual === 'diagnostico') {
-    const resumo = listar(ordemId).map((a) => `${a.numero}) ${a.zona_nome}: ${a.tipo_nome.toLowerCase()} ${a.gravidade}`).join('; ');
+    const resumo = listar(ordemId).map((a) => `${a.numero}) ${a.zona_nome}: ${a.tipo === 'servico' ? 'serviço sem avaria' : `${a.tipo_nome.toLowerCase()} ${a.gravidade}`}`).join('; ');
     const texto = [o.diagnostico, `Vistoria: ${resumo}.`].filter(Boolean).join('\n');
     ordens.registrarDiagnostico(ordemId, { diagnostico: texto }, usuario);
     o = ordens.buscar(ordemId, usuario);

@@ -19,7 +19,7 @@ export default function LayoutCliente() {
           </Link>
           <span className="hidden sm:block text-[14px] text-tinta-2">Olá, {primeiroNome(usuario.nome)}</span>
           <Avatar nome={usuario.nome} />
-          <button onClick={sair} className="p-2 rounded-lg text-tinta-3 hover:text-tinta hover:bg-white" aria-label="Sair"><LogOut className="size-5" /></button>
+          <button onClick={sair} className="p-2 rounded-lg text-tinta-3 hover:text-tinta hover:bg-superficie" aria-label="Sair"><LogOut className="size-5" /></button>
         </div>
       </header>
       <main className="max-w-[640px] mx-auto px-4 py-6 pb-16">

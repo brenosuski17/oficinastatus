@@ -78,6 +78,7 @@ export const api = {
     gerarOrcamento: (id) => post(`/ordens/${id}/avarias/orcamento`),
   },
   catalogo: (f) => get('/catalogo', f),
+  catalogoCategorias: () => get('/catalogo/categorias'),
   salvarServicoCatalogo: (id, d) => req('PUT', `/catalogo/${id}`, d),
 
   clientes: (busca) => get('/clientes', { busca }),

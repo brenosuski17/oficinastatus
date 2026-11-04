@@ -71,7 +71,7 @@ export default function Clientes() {
                   <p className="text-[13.5px] text-tinta-3">{c.total_veiculos} {c.total_veiculos === 1 ? 'veículo' : 'veículos'}</p>
                 </div>
                 {c.email && (c.tem_acesso
-                  ? <span className="rounded-full bg-[#ecfdf3] text-[#067647] text-[12px] font-bold px-2.5 py-1">Portal ativo</span>
+                  ? <span className="rounded-full bg-ok-bg text-ok text-[12px] font-bold px-2.5 py-1">Portal ativo</span>
                   : <span className="rounded-full bg-fundo text-tinta-3 text-[12px] font-bold px-2.5 py-1">Sem senha</span>)}
               </div>
               <div className="mt-4 space-y-1.5 text-[14.5px] text-tinta-2">
@@ -96,7 +96,7 @@ export default function Clientes() {
         {convite && (
           <div className="space-y-4">
             <p className="text-tinta-2">Link para <strong className="text-tinta">{convite.nome}</strong> criar a senha. Vale por 7 dias.</p>
-            {convite.email_enviado && <p className="rounded-xl bg-[#ecfdf3] text-[#067647] px-4 py-3 font-semibold">Enviado por e-mail.</p>}
+            {convite.email_enviado && <p className="rounded-xl bg-ok-bg text-ok px-4 py-3 font-semibold">Enviado por e-mail.</p>}
             <p className="rounded-xl bg-fundo px-4 py-3 text-[14px] break-all font-mono">{convite.link_convite}</p>
             <div className="flex flex-wrap gap-2">
               <Botao variante="secundario" icone={Copy} onClick={() => navigator.clipboard?.writeText(convite.link_convite).then(() => avisar('Link copiado.'))}>Copiar</Botao>

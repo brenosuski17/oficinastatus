@@ -57,6 +57,7 @@ fipeR.get('/:tipo/marcas/:marca/modelos/:modelo/anos/:ano', rota(async (req, res
 const catalogoR = express.Router();
 const catalogo = require('../services/catalogo');
 catalogoR.get('/', auth.equipe, rota((req, res) => res.json(catalogo.listar(req.query))));
+catalogoR.get('/categorias', auth.equipe, rota((req, res) => res.json(catalogo.contarCategorias())));
 catalogoR.put('/:id', auth.somenteAdmin, rota((req, res) => {
   const v = Number(req.body.valor);
   const m = Number(req.body.minutos);

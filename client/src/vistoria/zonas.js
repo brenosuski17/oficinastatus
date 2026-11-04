@@ -25,6 +25,7 @@ export const TIPOS = [
   { valor: 'quebra', nome: 'Quebra' },
   { valor: 'corrosao', nome: 'Corrosão' },
   { valor: 'pintura', nome: 'Pintura danificada' },
+  { valor: 'servico', nome: 'Serviço sem avaria' },
 ]
 export const nomeTipo = (t) => TIPOS.find((x) => x.valor === t)?.nome || t
 
@@ -34,6 +35,7 @@ export const GRAVIDADES = [
   { valor: 'grave', nome: 'Grave', cor: '#f43f5e' },
 ]
 export const corGravidade = (g) => GRAVIDADES.find((x) => x.valor === g)?.cor || '#3d5bff'
+export const corAvaria = (a) => (a.tipo === 'servico' ? '#5b7cff' : corGravidade(a.gravidade))
 
 // Explica o que cada gravidade significa para o tipo escolhido
 export const DICA_GRAVIDADE = {

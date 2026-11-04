@@ -14,8 +14,12 @@ const NovaOrdem = lazy(() => import('./oficina/NovaOrdem'))
 const Clientes = lazy(() => import('./oficina/Clientes'))
 const Veiculos = lazy(() => import('./oficina/Veiculos'))
 const Mensagens = lazy(() => import('./oficina/Mensagens'))
-const Equipe = lazy(() => import('./oficina/Equipe'))
-const Configuracoes = lazy(() => import('./oficina/Configuracoes'))
+const Ajustes = lazy(() => import('./oficina/Ajustes'))
+const Inspecoes = lazy(() => import('./oficina/Inspecoes'))
+const Inspecao = lazy(() => import('./vistoria/Inspecao'))
+const Orcamentos = lazy(() => import('./oficina/Orcamentos'))
+const Servicos = lazy(() => import('./oficina/Servicos'))
+const Historico = lazy(() => import('./oficina/Historico'))
 const InicioCliente = lazy(() => import('./cliente/Inicio'))
 const OrdemCliente = lazy(() => import('./cliente/OrdemCliente'))
 const Acompanhar = lazy(() => import('./cliente/Acompanhar'))
@@ -51,14 +55,21 @@ export default function App() {
 
         <Route path="/oficina" element={<Protegida papeis={['admin', 'mecanico']}><LayoutOficina /></Protegida>}>
           <Route index element={<Painel />} />
-          <Route path="quadro" element={<Quadro />} />
+          <Route path="patio" element={<Quadro />} />
+          <Route path="quadro" element={<Navigate to="/oficina/patio" replace />} />
+          <Route path="inspecao" element={<Inspecoes />} />
+          <Route path="inspecao/:id" element={<Inspecao />} />
           <Route path="ordens/nova" element={<NovaOrdem />} />
           <Route path="ordens/:id" element={<Ordem />} />
+          <Route path="orcamentos" element={<Orcamentos />} />
+          <Route path="servicos" element={<Servicos />} />
           <Route path="clientes" element={<Clientes />} />
           <Route path="veiculos" element={<Veiculos />} />
           <Route path="mensagens" element={<Mensagens />} />
-          <Route path="equipe" element={<Protegida papeis={['admin']}><Equipe /></Protegida>} />
-          <Route path="configuracoes" element={<Configuracoes />} />
+          <Route path="historico" element={<Historico />} />
+          <Route path="ajustes" element={<Ajustes />} />
+          <Route path="equipe" element={<Navigate to="/oficina/ajustes?aba=equipe" replace />} />
+          <Route path="configuracoes" element={<Navigate to="/oficina/ajustes" replace />} />
         </Route>
 
         <Route path="/cliente" element={<Protegida papeis={['cliente']}><LayoutCliente /></Protegida>}>

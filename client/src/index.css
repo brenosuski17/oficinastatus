@@ -33,8 +33,56 @@
   --color-entregue: #121a33;
   --color-recusada: #f04438;
 
+  /* superfícies e estados (trocam no tema escuro) */
+  --color-superficie: #ffffff;
+  --color-superficie-2: #f7f8fc;
+  --color-trilho: #e6e9f2;
+  --color-linha-forte: #cfd5e4;
+  --color-ok: #067647;
+  --color-ok-bg: #ecfdf3;
+  --color-erro: #b42318;
+  --color-erro-bg: #fef3f2;
+  --color-erro-borda: #f5c2bd;
+  --color-alerta: #93370d;
+  --color-alerta-bg: #fffaeb;
+  --color-alerta-borda: #f8e0a0;
+  --color-peca: #c4410a;
+
   --ease-mola: cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* Tema escuro da área da oficina: azul-marinho profundo, cartões translúcidos e brilho no azul */
+.tema-escuro {
+  color-scheme: dark;
+  --color-fundo: #070b1f;
+  --color-superficie: #0e1533;
+  --color-superficie-2: #121b40;
+  --color-trilho: rgb(255 255 255 / 0.07);
+  --color-linha: rgb(255 255 255 / 0.08);
+  --color-linha-forte: rgb(255 255 255 / 0.16);
+  --color-tinta: #eef1ff;
+  --color-tinta-2: #aab4d8;
+  --color-tinta-3: #7a86b0;
+  --color-ultramar-50: rgb(61 91 255 / 0.13);
+  --color-ultramar-100: rgb(61 91 255 / 0.22);
+  --color-ultramar-200: rgb(91 124 255 / 0.4);
+  --color-ultramar-700: #4f6bff;
+  --color-sinal-50: rgb(255 106 19 / 0.15);
+  --color-ok: #5ee69a;
+  --color-ok-bg: rgb(18 183 106 / 0.14);
+  --color-erro: #ff8f87;
+  --color-erro-bg: rgb(240 68 56 / 0.13);
+  --color-erro-borda: rgb(240 68 56 / 0.35);
+  --color-alerta: #fcc54b;
+  --color-alerta-bg: rgb(245 163 0 / 0.13);
+  --color-alerta-borda: rgb(245 163 0 / 0.35);
+  --color-peca: #ffa06b;
+  --color-entregue: #c7d0ff;
+  --color-recebido: #94a3c4;
+  background: var(--color-fundo);
+  color: var(--color-tinta);
+}
+.tema-escuro .cartao { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 24px 48px -28px rgb(0 0 0 / 0.7); }
 
 @layer base {
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
@@ -45,9 +93,9 @@
 }
 
 @layer components {
-  .cartao { @apply bg-white rounded-2xl border border-linha shadow-[0_1px_2px_rgba(18,26,51,0.04),0_8px_24px_-12px_rgba(18,26,51,0.08)]; }
+  .cartao { @apply bg-superficie rounded-2xl border border-linha shadow-[0_1px_2px_rgba(18,26,51,0.04),0_8px_24px_-12px_rgba(18,26,51,0.08)]; }
   .entrada {
-    @apply w-full h-11 rounded-xl border border-[#cfd5e4] bg-white px-3.5 text-[15px] text-tinta placeholder:text-tinta-3
+    @apply w-full h-11 rounded-xl border border-linha-forte bg-superficie px-3.5 text-[15px] text-tinta placeholder:text-tinta-3
       transition focus:border-ultramar-500 focus:ring-4 focus:ring-ultramar-100 focus:outline-none disabled:bg-fundo disabled:text-tinta-3;
   }
   textarea.entrada { @apply h-auto py-2.5 leading-relaxed; }

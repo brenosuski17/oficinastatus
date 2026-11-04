@@ -16,7 +16,9 @@ const SQL_BASE = `
          (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento i WHERE i.ordem_id = o.id) AS total,
          (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento i WHERE i.ordem_id = o.id AND i.aprovado = 1) AS total_aprovado,
          (SELECT COUNT(*) FROM itens_orcamento i WHERE i.ordem_id = o.id) AS qtd_itens,
-         (SELECT COUNT(*) FROM fotos f WHERE f.ordem_id = o.id) AS qtd_fotos
+         (SELECT COUNT(*) FROM fotos f WHERE f.ordem_id = o.id) AS qtd_fotos,
+         (SELECT COUNT(*) FROM avarias a WHERE a.ordem_id = o.id) AS qtd_avarias,
+         v.carroceria, v.ano_fabricacao, v.combustivel
     FROM ordens_servico o
     JOIN veiculos v ON v.id = o.veiculo_id
     JOIN clientes c ON c.id = v.cliente_id
@@ -329,7 +331,7 @@ function visaoCliente(o) {
     entregue_em: d.entregue_em,
     mecanico_nome: d.mecanico_nome,
     cliente_primeiro_nome: d.cliente_nome.split(' ')[0],
-    veiculo: { placa: d.placa, marca: d.marca, modelo: d.modelo, ano_modelo: d.ano_modelo, cor: d.cor },
+    veiculo: { placa: d.placa, marca: d.marca, modelo: d.modelo, ano_modelo: d.ano_modelo, cor: d.cor, carroceria: d.carroceria },
     itens: oculto ? [] : d.itens.map(({ id, tipo, descricao, quantidade, valor_unitario, aprovado }) => ({ id, tipo, descricao, quantidade, valor_unitario, aprovado })),
     total: oculto ? null : d.total,
     total_aprovado: d.total_aprovado,

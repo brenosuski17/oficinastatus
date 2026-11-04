@@ -33,7 +33,7 @@ for (const [chave, [nome, grupo]] of Object.entries(LATERAIS))
     ZONAS[`${chave}_${lado}`] = { nome: `${nome} ${adj}`, grupo };
   }
 
-const TIPOS = ['amassado', 'risco', 'trinca', 'quebra', 'corrosao', 'pintura'];
+const TIPOS = ['amassado', 'risco', 'trinca', 'quebra', 'corrosao', 'pintura', 'servico'];
 const GRAVIDADES = ['leve', 'moderada', 'grave'];
 
 // ---------------------------------------------------------------- tabela de preços inicial
@@ -94,9 +94,32 @@ const OUTROS = {
   },
 };
 
+// Categoria de cada serviço (abas da tabela de preços)
+function categoriaDe(codigo, zona) {
+  if (codigo === 'reparo_trinca' || ['para_brisa', 'vidro_lateral', 'vidro_traseiro'].includes(zona)) return 'vidros';
+  if (['farol', 'lanterna'].includes(zona) && !codigo.startsWith('polimento')) return 'eletrica';
+  if (codigo.startsWith('substituicao')) return 'pecas';
+  if (['martelinho', 'recuperacao', 'reparo_plastico', 'corrosao'].includes(codigo)) return 'funilaria';
+  if (['pintura', 'retoque', 'recuperacao_pintura', 'pintura_roda'].includes(codigo)) return 'pintura';
+  if (codigo.startsWith('polimento')) return 'estetica';
+  return 'mecanica';
+}
+const CATEGORIAS = { funilaria: 'Funilaria', pintura: 'Pintura', mecanica: 'Mecânica', vidros: 'Vidros', eletrica: 'Elétrica', estetica: 'Estética', pecas: 'Peças' };
+const ORDEM_CAT = Object.keys(CATEGORIAS);
+// "Aplica-se a" de cada grupo de peça
+const GRUPOS = {
+  porta_dianteira: 'Portas dianteiras', porta_traseira: 'Portas traseiras', para_lama_dianteiro: 'Para-lamas', lateral_traseira: 'Laterais traseiras',
+  capo: 'Capô', teto: 'Teto', tampa_traseira: 'Tampa traseira', soleira: 'Soleiras', para_choque: 'Para-choques', para_brisa: 'Para-brisa',
+  vidro_traseiro: 'Vidro traseiro', vidro_lateral: 'Vidros laterais', farol: 'Faróis', lanterna: 'Lanternas', retrovisor: 'Retrovisores', roda: 'Rodas',
+};
+
 function garantirCatalogo() {
+  const semCategoria = db.prepare('SELECT id, codigo, zona FROM catalogo_servicos WHERE categoria IS NULL').all();
+  const upd = db.prepare('UPDATE catalogo_servicos SET categoria = ? WHERE id = ?');
+  for (const s of semCategoria) upd.run(categoriaDe(s.codigo, s.zona), s.id);
   if (db.prepare('SELECT COUNT(*) n FROM catalogo_servicos').get().n) return;
-  const ins = db.prepare('INSERT INTO catalogo_servicos (codigo, zona, nome, valor, minutos) VALUES (?, ?, ?, ?, ?)');
+  const ins0 = db.prepare('INSERT INTO catalogo_servicos (codigo, zona, nome, valor, minutos, categoria) VALUES (?, ?, ?, ?, ?, ?)');
+  const ins = { run: (codigo, zona, nome, valor, min) => ins0.run(codigo, zona, nome, valor, min, categoriaDe(codigo, zona)) };
   const arred = (v) => Math.round(v / 5) * 5;
   db.transaction(() => {
     for (const [zona, [peca, fator]] of Object.entries(PECAS_LATARIA))
@@ -148,6 +171,8 @@ function sugerir(zona, tipo, gravidade) {
   const daZona = db.prepare('SELECT * FROM catalogo_servicos WHERE zona = ? AND ativo = 1 ORDER BY valor').all(z.grupo);
   const porCodigo = Object.fromEntries(daZona.map((s) => [s.codigo, s]));
 
+  if (tipo === 'servico') // serviço sem avaria: mostra tudo da peça, sem pré-seleção
+    return { servicos: daZona.map((s) => ({ ...s, relevancia: 1 })), pre: [] };
   const pre = [];
   for (const cod of PRE[tipo]?.[gravidade] || []) {
     const s = porCodigo[cod] || (ALTERNATIVA[cod] || []).map((a) => porCodigo[a]).find(Boolean);
@@ -164,12 +189,20 @@ function sugerir(zona, tipo, gravidade) {
   return { servicos, pre: preIds };
 }
 
-function listar({ busca, zona } = {}) {
+function listar({ busca, zona, categoria } = {}) {
   const where = ['ativo = 1'];
   const p = [];
+  if (categoria && CATEGORIAS[categoria]) { where.push('categoria = ?'); p.push(categoria); }
   if (zona && ZONAS[zona]) { where.push('zona = ?'); p.push(ZONAS[zona].grupo); }
   if (busca) { where.push('nome LIKE ?'); p.push(`%${busca}%`); }
-  return db.prepare(`SELECT * FROM catalogo_servicos WHERE ${where.join(' AND ')} ORDER BY zona, valor`).all(...p);
+  return db.prepare(`SELECT * FROM catalogo_servicos WHERE ${where.join(' AND ')} ORDER BY categoria, nome, zona`).all(...p)
+    .map((s) => ({ ...s, aplica_se: GRUPOS[s.zona] || s.zona, categoria_nome: CATEGORIAS[s.categoria] }))
+    .sort((a, b) => ORDEM_CAT.indexOf(a.categoria) - ORDEM_CAT.indexOf(b.categoria));
 }
 
-module.exports = { ZONAS, TIPOS, GRAVIDADES, garantirCatalogo, sugerir, listar, zonaInfo };
+function contarCategorias() {
+  const linhas = db.prepare('SELECT categoria, COUNT(*) n FROM catalogo_servicos WHERE ativo = 1 GROUP BY categoria').all();
+  return Object.entries(CATEGORIAS).map(([k, nome]) => ({ categoria: k, nome, total: linhas.find((l) => l.categoria === k)?.n || 0 }));
+}
+
+module.exports = { ZONAS, TIPOS, GRAVIDADES, CATEGORIAS, garantirCatalogo, sugerir, listar, contarCategorias, zonaInfo };

@@ -14,9 +14,9 @@ export const ETAPAS = [
 // Estado resumido da OS (coluna do quadro), com textos para a oficina e para o cliente
 export const ESTADOS = {
   recebido: { nome: 'Recebido', cor: 'var(--color-recebido)', icone: Inbox, oficina: 'Veículo recebido', cliente: 'Recebemos seu veículo' },
-  diagnostico: { nome: 'Diagnóstico', cor: 'var(--color-diagnostico)', icone: Stethoscope, oficina: 'Avaliar o veículo', cliente: 'Estamos avaliando seu veículo' },
+  diagnostico: { nome: 'Em diagnóstico', cor: 'var(--color-diagnostico)', icone: Stethoscope, oficina: 'Avaliar o veículo', cliente: 'Estamos avaliando seu veículo' },
   orcamento: { nome: 'Orçamento', cor: 'var(--color-orcamento)', icone: Calculator, oficina: 'Montar e enviar orçamento', cliente: 'Estamos montando seu orçamento' },
-  aprovacao: { nome: 'Aguardando cliente', cor: 'var(--color-aprovacao)', icone: ThumbsUp, oficina: 'Orçamento enviado', cliente: 'Seu orçamento está pronto' },
+  aprovacao: { nome: 'Aguardando aprovação', cor: 'var(--color-aprovacao)', icone: ThumbsUp, oficina: 'Orçamento enviado', cliente: 'Seu orçamento está pronto' },
   aprovado: { nome: 'Aprovado', cor: 'var(--color-aprovado)', icone: BadgeCheck, oficina: 'Liberado para iniciar', cliente: 'Orçamento aprovado' },
   execucao: { nome: 'Em execução', cor: 'var(--color-execucao)', icone: Wrench, oficina: 'Serviço em andamento', cliente: 'Serviço em andamento' },
   pronto: { nome: 'Pronto', cor: 'var(--color-pronto)', icone: CircleCheckBig, oficina: 'Aguardando retirada', cliente: 'Pronto para retirada' },

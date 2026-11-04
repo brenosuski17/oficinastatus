@@ -10,6 +10,10 @@ const ordens = require('./services/ordens');
 db.exec(`DELETE FROM mensagens; DELETE FROM fotos; DELETE FROM itens_orcamento; DELETE FROM etapas; DELETE FROM ordens_servico;
          DELETE FROM veiculos; DELETE FROM usuarios; DELETE FROM clientes; DELETE FROM sqlite_sequence;`);
 
+// tabela de preços volta ao padrão
+db.exec('DELETE FROM catalogo_servicos');
+require('./services/catalogo').garantirCatalogo();
+
 const SENHA = 'oficina123';
 const hash = bcrypt.hashSync(SENHA, 10);
 const usuario = db.prepare('INSERT INTO usuarios (nome, email, senha_hash, papel, cliente_id) VALUES (?, ?, ?, ?, ?)');
@@ -32,10 +36,13 @@ const C = [
   ['Luciana Farias', '42999550005', 'luciana@cliente.com', 'HBX7J82', 'Hyundai', 'HB20 Comfort 1.0 Flex 12V', 2019, 'Azul', 72500],
   ['Carlos Eduardo Nunes', '42999660006', null, 'KLM3A45', 'Renault', 'Kwid Zen 1.0 Flex 12V 5p', 2023, 'Branco', 18900],
 ];
+const CARROCERIA = { MTZ4C21: 'picape', RTY5F67: 'sedan' };
 const V = C.map(([nome, tel, email, placa, marca, modelo, ano, cor, km]) => {
   const cid = cliente.run(nome, tel, email).lastInsertRowid;
   if (email) usuario.run(nome, email, hash, 'cliente', cid); // clientes de demonstração já com senha
-  return veiculo.run(cid, placa, marca, modelo, ano, ano, cor, km).lastInsertRowid;
+  const id = veiculo.run(cid, placa, marca, modelo, ano, ano, cor, km).lastInsertRowid;
+  db.prepare('UPDATE veiculos SET carroceria = ? WHERE id = ?').run(CARROCERIA[placa] || 'hatch', id);
+  return id;
 });
 
 const item = (id, tipo, descricao, quantidade, valor_unitario) => ordens.adicionarItem(id, { tipo, descricao, quantidade, valor_unitario }, admin);
@@ -110,7 +117,7 @@ const avarias = require('./services/avarias');
 const catalogo = require('./services/catalogo');
 const cidF = cliente.run('Fernanda Costa', '42999770007', 'fernanda@cliente.com').lastInsertRowid;
 usuario.run('Fernanda Costa', 'fernanda@cliente.com', hash, 'cliente', cidF);
-const vF = veiculo.run(cidF, 'FRN7C30', 'VW - VolksWagen', 'Polo Track 1.0 Flex 12V 5p', 2023, 2023, 'Prata', 22100).lastInsertRowid;
+const vF = veiculo.run(cidF, 'FRN7C30', 'VW - VolksWagen', 'Polo Track 1.0 Flex 12V 5p', 2023, 2023, 'Azul', 22100).lastInsertRowid;
 db.prepare("UPDATE veiculos SET fipe_codigo = '005569-0', fipe_valor = 'R$ 81.200,00', fipe_mes_referencia = 'novembro de 2026', origem_dados = 'fipe' WHERE id = ?").run(vF);
 const o6 = ordens.criar({ veiculo_id: vF, problema_relatado: 'Batida leve no estacionamento, lado direito e frente.', km_entrada: 22140, mecanico_id: mecA }, admin);
 const marcar = (zona, tipo, gravidade, posicao, normal, observacao) => {

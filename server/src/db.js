@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS veiculos (
   fipe_mes_referencia  TEXT,
   fipe_consultado_em   TEXT,
   origem_dados         TEXT NOT NULL DEFAULT 'manual' CHECK (origem_dados IN ('manual','fipe','placa')),
+  carroceria           TEXT NOT NULL DEFAULT 'hatch' CHECK (carroceria IN ('hatch','sedan','suv','picape')),  -- modelo 3D usado na inspeção
   criado_em            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -129,7 +130,7 @@ CREATE TABLE IF NOT EXISTS avarias (
   ordem_id    INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
   numero      INTEGER NOT NULL,                  -- nº exibido no pino (1, 2, 3…)
   zona        TEXT NOT NULL,                     -- peça do carro (porta_dianteira_direita, capo…)
-  tipo        TEXT NOT NULL CHECK (tipo IN ('amassado','risco','trinca','quebra','corrosao','pintura')),
+  tipo        TEXT NOT NULL CHECK (tipo IN ('amassado','risco','trinca','quebra','corrosao','pintura','servico')),  -- servico = serviço sem avaria
   gravidade   TEXT NOT NULL CHECK (gravidade IN ('leve','moderada','grave')),
   pos_x REAL NOT NULL, pos_y REAL NOT NULL, pos_z REAL NOT NULL,  -- ponto no modelo 3D
   nor_x REAL NOT NULL DEFAULT 0, nor_y REAL NOT NULL DEFAULT 1, nor_z REAL NOT NULL DEFAULT 0,
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS catalogo_servicos (
   nome      TEXT NOT NULL,
   valor     REAL NOT NULL CHECK (valor >= 0),
   minutos   INTEGER NOT NULL DEFAULT 60,
+  categoria TEXT,                                -- funilaria, pintura, vidros, eletrica, estetica, mecanica, pecas
   ativo     INTEGER NOT NULL DEFAULT 1,
   UNIQUE (codigo, zona)
 );
@@ -171,6 +173,24 @@ CREATE INDEX IF NOT EXISTS idx_itens_ordem      ON itens_orcamento(ordem_id);
 CREATE INDEX IF NOT EXISTS idx_fotos_ordem      ON fotos(ordem_id);
 CREATE INDEX IF NOT EXISTS idx_mensagens_ordem  ON mensagens(ordem_id);
 `);
+
+// ---------------------------------------------------------------- migrações de bancos antigos
+const colunas = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+if (!colunas('veiculos').includes('carroceria'))
+  db.exec("ALTER TABLE veiculos ADD COLUMN carroceria TEXT NOT NULL DEFAULT 'hatch'");
+if (!colunas('catalogo_servicos').includes('categoria'))
+  db.exec('ALTER TABLE catalogo_servicos ADD COLUMN categoria TEXT');
+// "Serviço sem avaria" exige refazer a tabela, porque o SQLite não altera CHECK
+const sqlAvarias = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'avarias'").get()?.sql || '';
+if (sqlAvarias && !sqlAvarias.includes("'servico'")) {
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec(sqlAvarias.replace('CREATE TABLE avarias', 'CREATE TABLE avarias_nova').replace("'pintura')", "'pintura','servico')"));
+    db.exec('INSERT INTO avarias_nova SELECT * FROM avarias; DROP TABLE avarias; ALTER TABLE avarias_nova RENAME TO avarias;');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_avarias_ordem ON avarias(ordem_id)');
+  })();
+  db.pragma('foreign_keys = ON');
+}
 
 // Migração: bancos criados antes da vistoria 3D não têm o vínculo item ↔ avaria
 if (!db.prepare('PRAGMA table_info(itens_orcamento)').all().some((c) => c.name === 'avaria_id')) {

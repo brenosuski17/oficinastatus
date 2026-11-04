@@ -1,5 +1,5 @@
-import { lazy, Suspense, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   ChevronLeft, Stethoscope, Send, ThumbsUp, ThumbsDown, Play, PackageSearch, PackageCheck, CircleCheckBig, KeyRound,
@@ -16,7 +16,6 @@ import Orcamento from './Orcamento'
 import Mensagem from './Mensagem'
 import { avisarMudanca } from './Layout'
 
-const Vistoria = lazy(() => import('../vistoria/Vistoria'))
 
 /** Cartão colorido com a cor da etapa atual. */
 function Caixa({ e, titulo, texto, children }) {
@@ -49,7 +48,7 @@ function ProximaAcao({ o, executar, ocupado, abrirAprovacao, abrirVistoria }) {
           <form onSubmit={(ev) => { ev.preventDefault(); executar(() => api.diagnostico(o.id, { diagnostico: diag }), 'Diagnóstico registrado. Cliente avisado.') }} className="space-y-3">
             <textarea className="entrada !border-white/30" rows={2} required value={diag} onChange={(ev) => setDiag(ev.target.value)} placeholder="Ex.: pastilhas no limite, disco com desgaste irregular" aria-label="Diagnóstico" />
             <div className="flex flex-wrap gap-2">
-              <Botao type="button" variante="secundario" icone={Box} onClick={abrirVistoria} className="!border-white">Abrir vistoria 3D</Botao>
+              <Botao type="button" variante="secundario" icone={Box} onClick={abrirVistoria} className="!border-white">Abrir inspeção 3D</Botao>
               <Botao type="submit" variante="fantasma" icone={Stethoscope} carregando={ocupado} className="!text-white hover:!bg-white/15">Concluir só com o texto</Botao>
             </div>
           </form>
@@ -191,7 +190,7 @@ function Fotos({ o, aoAtualizar }) {
   )
 }
 
-const ABAS = [['resumo', 'Resumo'], ['vistoria', 'Vistoria 3D'], ['orcamento', 'Orçamento'], ['fotos', 'Fotos'], ['historico', 'Histórico']]
+const ABAS = [['resumo', 'Resumo'], ['orcamento', 'Orçamento'], ['fotos', 'Fotos'], ['historico', 'Histórico']]
 
 export default function Ordem() {
   const { id } = useParams()
@@ -200,6 +199,7 @@ export default function Ordem() {
   const { dados: o, erro, carregando, setDados, recarregar } = useDados(() => api.ordem(id), [id])
   const { dados: mecanicos } = useDados(() => api.mecanicos(), [])
   const [aba, setAba] = useState('resumo')
+  const navegar = useNavigate()
   const [ocupado, setOcupado] = useState(false)
   const [aprovando, setAprovando] = useState(false)
 
@@ -212,11 +212,11 @@ export default function Ordem() {
   if (carregando && !o) return <div className="space-y-4"><Esqueleto className="h-24" /><Esqueleto className="h-28" /><Esqueleto className="h-64" /></div>
 
   const linkCliente = `${window.location.origin}/acompanhar/${o.codigo_publico}`
-  const contagem = { vistoria: o.avarias.length, orcamento: o.itens.length, fotos: o.fotos.length, historico: o.mensagens.length }
+  const contagem = { orcamento: o.itens.length, fotos: o.fotos.length, historico: o.mensagens.length }
 
   return (
     <>
-      <Link to="/oficina/quadro" className="inline-flex items-center gap-1 text-[14px] font-semibold text-tinta-2 hover:text-tinta mb-4"><ChevronLeft className="size-4" />Quadro</Link>
+      <Link to="/oficina/patio" className="inline-flex items-center gap-1 text-[14px] font-semibold text-tinta-2 hover:text-tinta mb-4"><ChevronLeft className="size-4" />Quadro</Link>
 
       <motion.header className="cartao p-6 flex flex-wrap items-center gap-6" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <Placa placa={o.placa} tamanho="g" />
@@ -224,10 +224,13 @@ export default function Ordem() {
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-[26px] font-extrabold tracking-tight leading-tight">{nomeVeiculo(o)}</h1>
             <Selo estado={o.etapa_atual} />
-            {o.aguardando_peca && <span className="rounded-full bg-sinal-50 text-[#c4410a] px-2.5 py-1 text-[12.5px] font-bold">Aguardando peça</span>}
+            {o.aguardando_peca && <span className="rounded-full bg-sinal-50 text-peca px-2.5 py-1 text-[12.5px] font-bold">Aguardando peça</span>}
           </div>
           <p className="text-tinta-2 mt-1">OS {o.id} · aberta em {dataHora(o.criado_em)}{o.ano_modelo ? ` · ${o.ano_modelo}` : ''}{o.cor ? ` · ${o.cor}` : ''}</p>
         </div>
+        <Botao as={Link} to={`/oficina/inspecao/${o.id}`} icone={Box} variante={o.avarias.length ? 'secundario' : 'primario'}>
+          Inspeção 3D{o.avarias.length ? ` · ${o.avarias.length}` : ''}
+        </Botao>
         <label className="block min-w-[200px]">
           <span className="rotulo">Mecânico responsável</span>
           <select className="entrada" value={o.mecanico_id || ''} disabled={usuario.papel !== 'admin' && o.mecanico_id === usuario.id}
@@ -242,7 +245,7 @@ export default function Ordem() {
         <div className="min-w-[560px]"><Trilha etapas={o.etapas} situacao={o.situacao} aguardandoPeca={o.aguardando_peca} /></div>
       </section>
 
-      <div className="mt-4"><ProximaAcao key={`${o.etapa_atual}-${o.atualizado_em}`} o={o} executar={executar} ocupado={ocupado} abrirAprovacao={() => setAprovando(true)} abrirVistoria={() => setAba('vistoria')} /></div>
+      <div className="mt-4"><ProximaAcao key={`${o.etapa_atual}-${o.atualizado_em}`} o={o} executar={executar} ocupado={ocupado} abrirAprovacao={() => setAprovando(true)} abrirVistoria={() => navegar(`/oficina/inspecao/${o.id}`)} /></div>
       {aprovando && <AprovacaoManual o={o} aberto={aprovando} aoFechar={() => setAprovando(false)} executar={executar} />}
 
       <div className="mt-6 flex gap-1 border-b border-linha overflow-x-auto" role="tablist">
@@ -294,11 +297,6 @@ export default function Ordem() {
                 </section>
               </aside>
             </div>
-          )}
-          {aba === 'vistoria' && (
-            <Suspense fallback={<Esqueleto className="h-[680px] !rounded-[28px] !bg-[#0b1233]" />}>
-              <Vistoria o={o} aoAtualizar={(r) => { setDados(r); avisarMudanca() }} aoGerar={() => setAba('orcamento')} />
-            </Suspense>
           )}
           {aba === 'orcamento' && <section className="cartao p-6"><Orcamento o={o} aoAtualizar={setDados} /></section>}
           {aba === 'fotos' && <section className="cartao p-6"><Fotos o={o} aoAtualizar={setDados} /></section>}

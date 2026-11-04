@@ -46,7 +46,7 @@ export default function Orcamento({ o, aoAtualizar }) {
                   <motion.tr key={i.id} layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 20 }} className="border-t border-linha">
                     <td className="px-6 sm:px-0 py-3">
                       <span className="flex items-center gap-2.5">
-                        <span className={`grid place-items-center size-8 rounded-lg ${i.tipo === 'peca' ? 'bg-[#e0f2fe] text-orcamento' : 'bg-[#f4f0ff] text-diagnostico'}`}>
+                        <span className={`grid place-items-center size-8 rounded-lg ${i.tipo === 'peca' ? 'bg-orcamento/15 text-orcamento' : 'bg-diagnostico/15 text-diagnostico'}`}>
                           {i.tipo === 'peca' ? <Package className="size-4" /> : <Wrench className="size-4" />}
                         </span>
                         <span>
@@ -60,7 +60,7 @@ export default function Orcamento({ o, aoAtualizar }) {
                     <td className="text-right num">{moeda(i.valor_unitario)}</td>
                     <td className={`text-right num font-semibold ${i.aprovado === 0 ? 'line-through text-tinta-3' : ''}`}>{moeda(i.quantidade * i.valor_unitario)}</td>
                     <td className="text-right pr-6 sm:pr-0">
-                      {editavel && <button onClick={() => remover(i)} className="p-2 rounded-lg text-tinta-3 hover:text-recusada hover:bg-[#fef3f2]" aria-label={`Remover ${i.descricao}`}><Trash2 className="size-4" /></button>}
+                      {editavel && <button onClick={() => remover(i)} className="p-2 rounded-lg text-tinta-3 hover:text-recusada hover:bg-erro-bg" aria-label={`Remover ${i.descricao}`}><Trash2 className="size-4" /></button>}
                     </td>
                   </motion.tr>
                 ))}

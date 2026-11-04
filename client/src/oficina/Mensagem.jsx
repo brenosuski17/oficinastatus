@@ -34,9 +34,9 @@ export default function Mensagem({ m, aoMudar, mostrarOS }) {
   }
 
   return (
-    <li className={`rounded-2xl border p-4 ${entrada ? 'bg-ultramar-50 border-ultramar-100' : m.status === 'falhou' ? 'bg-[#fffafa] border-[#f5c2bd]' : m.status === 'pendente' && m.link_envio ? 'bg-[#fffbeb] border-[#f8e0a0]' : 'bg-white border-linha'}`}>
+    <li className={`rounded-2xl border p-4 ${entrada ? 'bg-ultramar-50 border-ultramar-100' : m.status === 'falhou' ? 'bg-erro-bg border-erro-borda' : m.status === 'pendente' && m.link_envio ? 'bg-alerta-bg border-alerta-borda' : 'bg-superficie border-linha'}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
-        <span className={`grid place-items-center size-7 rounded-lg ${m.canal === 'email' ? 'bg-ultramar-100 text-ultramar-700' : entrada ? 'bg-white text-ultramar-600' : 'bg-[#dcfae6] text-[#067647]'}`}><Icone className="size-4" /></span>
+        <span className={`grid place-items-center size-7 rounded-lg ${m.canal === 'email' ? 'bg-ultramar-100 text-ultramar-700' : entrada ? 'bg-superficie text-ultramar-600' : 'bg-ok-bg text-ok'}`}><Icone className="size-4" /></span>
         {mostrarOS && <><Placa placa={m.placa} tamanho="p" /><Link to={`/oficina/ordens/${m.ordem_id}`} className="font-bold text-ultramar-600">OS {m.ordem_id}</Link><span className="font-semibold">{m.cliente_nome}</span></>}
         <span className="font-semibold text-tinta-2">{entrada ? 'Cliente' : m.canal === 'email' ? m.destinatario : `WhatsApp ${telefone(m.destinatario)}`}</span>
         {m.etapa_tipo && <span className="text-tinta-3">{ETAPAS.find((e) => e.tipo === m.etapa_tipo)?.nome}</span>}
@@ -44,7 +44,7 @@ export default function Mensagem({ m, aoMudar, mostrarOS }) {
       </div>
       {m.assunto && !entrada && <p className="font-bold mt-3">{m.assunto}</p>}
       <p className="text-[14.5px] text-tinta-2 whitespace-pre-line mt-1 max-w-[75ch]">{m.conteudo}</p>
-      {m.status === 'falhou' && <p className="text-[13px] text-[#b42318] mt-2">Motivo: {m.erro}</p>}
+      {m.status === 'falhou' && <p className="text-[13px] text-erro mt-2">Motivo: {m.erro}</p>}
       <div className="flex gap-2 mt-3 empty:hidden">
         {m.link_envio && !entrada && (
           <Botao as="a" href={m.link_envio} target="_blank" rel="noreferrer" variante={m.status === 'enviada' ? 'secundario' : 'whats'} tamanho="p" icone={Send} onClick={manual}>

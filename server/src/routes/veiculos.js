@@ -3,6 +3,7 @@ const db = require('../db');
 const auth = require('../services/auth');
 const placaSvc = require('../services/placa');
 const fipe = require('../services/fipe');
+const ordens = require('../services/ordens');
 const { naoEncontrado, requisicaoInvalida, conflito, rota } = require('../errors');
 
 router.use(auth.equipe);
@@ -24,13 +25,23 @@ function validar(b) {
     fipe_valor: b.fipe_valor || null, fipe_mes_referencia: b.fipe_mes_referencia || null,
     fipe_consultado_em: b.fipe_valor ? new Date().toISOString() : null,
     origem_dados: ['manual', 'fipe', 'placa'].includes(b.origem_dados) ? b.origem_dados : b.fipe_valor ? 'fipe' : 'manual',
+    carroceria: ['hatch', 'sedan', 'suv', 'picape'].includes(b.carroceria) ? b.carroceria : 'hatch',
   };
 }
 
 const SELECT = `
   SELECT v.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
-         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id AND o.situacao = 'aberta') AS os_aberta
+         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id AND o.situacao = 'aberta') AS os_aberta,
+         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id ORDER BY o.id DESC LIMIT 1) AS ultima_os,
+         (SELECT COUNT(*) FROM ordens_servico o WHERE o.veiculo_id = v.id) AS total_os
     FROM veiculos v JOIN clientes c ON c.id = v.cliente_id`;
+
+/** Acrescenta a etapa e a data da última OS (cartões de Veículos). */
+function comUltima(v) {
+  if (!v?.ultima_os) return v;
+  const o = ordens.buscar(v.ultima_os);
+  return { ...v, ultima_os_etapa: o.etapa_atual, ultima_os_data: o.criado_em, ultima_os_avarias: o.qtd_avarias };
+}
 
 function traduzirErro(fn) {
   try { return fn(); } catch (e) {
@@ -43,7 +54,7 @@ function traduzirErro(fn) {
 router.get('/', rota((req, res) => {
   const b = req.query.busca ? `%${req.query.busca}%` : '%';
   const bp = req.query.busca ? `%${placaSvc.normalizarPlaca(req.query.busca)}%` : '%';
-  res.json(db.prepare(`${SELECT} WHERE v.placa LIKE ? OR v.modelo LIKE ? OR c.nome LIKE ? ORDER BY v.id DESC`).all(bp, b, b));
+  res.json(db.prepare(`${SELECT} WHERE v.placa LIKE ? OR v.modelo LIKE ? OR c.nome LIKE ? ORDER BY v.id DESC`).all(bp, b, b).map(comUltima));
 }));
 
 /**
@@ -65,7 +76,7 @@ router.get('/:id', rota((req, res) => {
   res.json(v);
 }));
 
-const CAMPOS = 'cliente_id, placa, tipo, marca, modelo, ano_fabricacao, ano_modelo, combustivel, cor, quilometragem, fipe_codigo, fipe_ano_id, fipe_valor, fipe_mes_referencia, fipe_consultado_em, origem_dados';
+const CAMPOS = 'cliente_id, placa, tipo, marca, modelo, ano_fabricacao, ano_modelo, combustivel, cor, quilometragem, fipe_codigo, fipe_ano_id, fipe_valor, fipe_mes_referencia, fipe_consultado_em, origem_dados, carroceria';
 
 router.post('/', rota((req, res) => {
   const d = validar(req.body);

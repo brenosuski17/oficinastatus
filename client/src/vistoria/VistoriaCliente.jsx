@@ -4,9 +4,9 @@ import { motion } from 'motion/react'
 import { RotateCw } from 'lucide-react'
 import { moeda } from '../lib/formato'
 import Carro3D, { VISTAS } from './Carro3D'
-import { corGravidade, nomeTipo } from './zonas'
+import { corAvaria, nomeTipo } from './zonas'
 
-export default function VistoriaCliente({ avarias }) {
+export default function VistoriaCliente({ avarias, carroceria, cor }) {
   const [sel, setSel] = useState(null)
   const [vista, setVista] = useState(null)
   const [girar, setGirar] = useState(true)
@@ -24,10 +24,10 @@ export default function VistoriaCliente({ avarias }) {
   return (
     <section className="rounded-[28px] overflow-hidden bg-[#070c22] text-white" aria-labelledby="t-avarias">
       <div className="relative h-[300px] sm:h-[360px] bg-[radial-gradient(ellipse_at_50%_30%,#1a2660_0%,#0b1233_55%,#070c22_100%)]">
-        <Carro3D avarias={lista} selecionada={sel} aoSelecionar={focar} vista={vista} girar={girar} />
+        <Carro3D carroceria={carroceria} cor={cor} avarias={lista} selecionada={sel} aoSelecionar={focar} vista={vista} girar={girar} />
         <div className="absolute top-4 left-5 right-5 flex items-start justify-between pointer-events-none">
           <div>
-            <h2 id="t-avarias" className="text-[19px] font-extrabold">Avarias encontradas</h2>
+            <h2 id="t-avarias" className="text-[19px] font-extrabold">Inspeção do veículo</h2>
             <p className="text-[13.5px] text-[#9aa6cf]">Toque nos números ou arraste para girar.</p>
           </div>
           <button onClick={() => { setGirar(true); setSel(null); setVista({ ...VISTAS.perspectiva, k: Date.now() }) }} aria-label="Voltar à visão geral"
@@ -38,10 +38,10 @@ export default function VistoriaCliente({ avarias }) {
         {avarias.map((a, i) => (
           <motion.li key={a.numero} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <button onClick={() => focar(a)} className={`w-full flex items-start gap-3 rounded-2xl p-3 text-left transition ${sel === a.numero ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-              <span className="grid place-items-center size-8 shrink-0 rounded-full font-extrabold text-[14px]" style={{ background: corGravidade(a.gravidade) }}>{a.numero}</span>
+              <span className="grid place-items-center size-8 shrink-0 rounded-full font-extrabold text-[14px]" style={{ background: corAvaria(a) }}>{a.numero}</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold">{a.zona_nome}</span>
-                <span className="block text-[14px] text-[#9aa6cf]">{nomeTipo(a.tipo)} · {a.gravidade}{a.observacao ? ` · ${a.observacao}` : ''}</span>
+                <span className="block text-[14px] text-[#9aa6cf]">{a.tipo === 'servico' ? 'Serviço' : `${nomeTipo(a.tipo)} · ${a.gravidade}`}{a.observacao ? ` · ${a.observacao}` : ''}</span>
                 <span className="block text-[13.5px] text-[#c9d2f0] mt-1">
                   {a.servicos.map((s) => `${s.descricao}${s.valor != null ? ` (${moeda(s.valor)})` : ''}`).join(' + ')}
                 </span>

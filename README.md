@@ -9,16 +9,23 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 
 | Área da oficina | Área do cliente (celular) |
 |---|---|
-| ![Painel](docs/telas/painel.png) | ![Orçamento no celular](docs/telas/cliente-orcamento.png) |
+| ![Inspeção 3D](docs/telas/vistoria.png) | ![Orçamento no celular](docs/telas/cliente-orcamento.png) |
+
+| Visão geral | Veículos | Orçamentos |
+|---|---|---|
+| ![Visão geral](docs/telas/painel.png) | ![Veículos](docs/telas/veiculos.png) | ![Orçamentos](docs/telas/orcamentos.png) |
 
 ## Funcionalidades
 
-**Área da oficina** (administrador e mecânico)
-- **Painel** com indicadores em tempo real, faturamento, tempo médio por etapa e serviços mais feitos.
-- **Quadro** com cada carro na coluna da sua etapa e a "estrada" de progresso de cada OS.
+**Área da oficina** (administrador e mecânico, tema escuro com menu lateral)
+- **Visão geral** com faturamento do mês comparado ao anterior, situação das ordens, carros no pátio e últimas inspeções.
+- **Pátio** com cada carro na coluna da sua etapa e a "estrada" de progresso de cada OS.
+- **Inspeção 3D** em tela cheia: modelo do carro conforme a carroceria (hatch, sedã, SUV ou picape) e a cor cadastrada, vistas prontas (perspectiva, topo, laterais, frente, traseira), giro automático, marcadores e destaque das peças avariadas. Clicar numa peça abre o painel dela para **registrar avaria** ou **adicionar serviço sem avaria** (alinhamento, higienização…). O painel mostra o orçamento parcial e a **prévia do que o cliente vai ver**.
+- **Veículos** em cartões com a última inspeção, histórico e atalho para a inspeção 3D.
+- **Orçamentos** (ORC-ano-número) com filtro por situação, **Serviços** (catálogo de preços por categoria, editável pelo administrador) e **Histórico** de serviços encerrados.
 - **Abertura de OS pela placa:** se o carro já veio antes, aparece na hora. Se for novo, a consulta por placa (PlacaFipe) preenche marca, modelo, ano e cor, e a busca na **API FIPE** traz o valor de referência.
 - **7 etapas:** recebido → diagnóstico → orçamento → aprovação → execução (com "aguardando peça") → pronto → entregue. O servidor não deixa pular etapas.
-- **Vistoria 3D:** um carro em 3D, modelado no próprio sistema, em que o mecânico clica no ponto danificado. A peça é reconhecida sozinha (porta dianteira direita, capô, farol…). Ele escolhe o tipo de avaria e a gravidade, e o sistema sugere os serviços da tabela de preços, com valor e tempo. **Gerar orçamento** transforma as avarias em itens da OS e, se ela estiver no diagnóstico, já o conclui. O cliente vê o carro com os pontos marcados no portal.
+- **Como a inspeção funciona:** um carro em 3D, modelado no próprio sistema, em que o mecânico clica no ponto danificado. A peça é reconhecida sozinha (porta dianteira direita, capô, farol…). Ele escolhe o tipo de avaria e a gravidade, e o sistema sugere os serviços da tabela de preços, com valor e tempo. **Gerar orçamento** transforma as avarias em itens da OS e, se ela estiver no diagnóstico, já o conclui. O cliente vê o carro com os pontos marcados no portal.
 - **Orçamento por itens**, com peças e mão de obra separadas.
 - **Mecânico responsável:** cada mecânico vê só as OS dele e as que ainda não têm responsável.
 - **Fotos** da entrada, do diagnóstico, da execução e da entrega, tiradas direto pelo celular.
