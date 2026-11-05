@@ -41,7 +41,7 @@ export const MODELOS = {
   hatch: {
     url: '/modelos/golf.glb',
     marcas: /\b(vw|volks\s*wagen)\b/i,
-    credito: 'Modelo 3D: Volkswagen Golf GTI 2025, Sketchfab (licença Standard)',
+    credito: 'Modelo 3D: Volkswagen Golf GTI 2025, de geyges, Sketchfab (licença Standard)',
     medidas: {
       nome: 'Hatch',
       base: 0.214, frente: 2.196, tras: -2.096, capoY: 0.75, cintura: 0.95, cinturaTras: 1.0,

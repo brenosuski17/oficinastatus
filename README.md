@@ -71,11 +71,11 @@ Testes automatizados: `npm test --prefix server`.
 
 ### Modelo 3D do Golf (opcional)
 
-Na inspeção 3D, os hatches da Volkswagen usam o modelo **Volkswagen Golf GTI 2025**, do Sketchfab. A licença Standard do Sketchfab proíbe redistribuir o arquivo, por isso `client/public/modelos/golf.glb` está no `.gitignore` e não vem com o repositório. Sem ele, o sistema funciona normalmente e esses veículos aparecem com o carro desenhado, como todos os outros.
+Na inspeção 3D, os hatches da Volkswagen usam o modelo [**Volkswagen Golf GTI (2025)**](https://sketchfab.com/3d-models/volkswagen-golf-gti-2025-84fe6c2b9feb4c8a854d16f3daf33eab), de [geyges](https://sketchfab.com/geyges), no Sketchfab. A licença Free Standard do Sketchfab proíbe redistribuir o arquivo, por isso `client/public/modelos/golf.glb` está no `.gitignore` e não vem com o repositório. Sem ele, o sistema funciona normalmente e esses veículos aparecem com o carro desenhado, como todos os outros.
 
 Para usar o modelo na sua máquina:
 
-1. Com uma conta no [Sketchfab](https://sketchfab.com), procure por "Volkswagen Golf GTI 2025", confira se a licença é a Standard e baixe o modelo no formato original.
+1. Com uma conta no Sketchfab, abra a [página do modelo](https://sketchfab.com/3d-models/volkswagen-golf-gti-2025-84fe6c2b9feb4c8a854d16f3daf33eab) e baixe-o no formato original.
 2. Extraia o `.zip`. O arquivo usado é `source/golf_gti_my25_lights_on.glb`.
 3. Depois de `npm run instalar`, gere a versão otimizada:
 
