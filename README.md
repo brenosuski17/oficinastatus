@@ -41,7 +41,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 
 | Camada | Tecnologia |
 |---|---|
-| Back-end | Node.js 22+, Express, better-sqlite3, JWT (jsonwebtoken), bcrypt, Nodemailer, Multer |
+| Back-end | Node.js 22.13+, Express, SQLite embutido do Node (node:sqlite), JWT (jsonwebtoken), bcrypt, Nodemailer, Multer |
 | Banco de dados | SQLite (`server/data/oficina.db`, criado automaticamente) |
 | Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide, Three.js + React Three Fiber (vistoria 3D) |
 | APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · WhatsApp Cloud API (Meta) |

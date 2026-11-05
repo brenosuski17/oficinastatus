@@ -7,7 +7,7 @@ segunda API obrigatória: FIPE (Parallelum). Textos da interface e do código em
 
 ## Comandos
 
-Requer Node.js 22+ (better-sqlite3 exige).
+Requer Node.js 22.13+ (usa o SQLite embutido, `node:sqlite`, via `server/src/sqlite.js`; não há módulo nativo para compilar).
 
 ```bash
 npm run instalar            # na raiz: instala raiz, server e client
