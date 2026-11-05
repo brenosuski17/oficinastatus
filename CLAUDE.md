@@ -5,6 +5,8 @@ para oficina mecânica em que o cliente é avisado a cada etapa (e-mail + WhatsA
 Requisitos do trabalho: entidades mínimas `clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`;
 segunda API obrigatória: FIPE (Parallelum). Textos da interface e do código em português do Brasil.
 
+Repositório: https://github.com/brenosuski17/oficinastatus
+
 ## Comandos
 
 Requer Node.js 22.13+ (usa o SQLite embutido, `node:sqlite`, via `server/src/sqlite.js`; não há módulo nativo para compilar).
@@ -48,7 +50,6 @@ pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/d
 - Configurar o WhatsApp real da Meta (o Breno vai criar o app e passar as chaves).
 - Trocar os carros procedurais por modelos .glb reais (Sketchfab/Poly Haven, licença CC0/CC BY, crédito ao autor),
   mantendo cor do veículo, clique por peça e marcações de avaria. Preferir modelos com peças separadas.
-- Publicar no GitHub (repositório ainda não definido).
 
 ## Convenções
 
