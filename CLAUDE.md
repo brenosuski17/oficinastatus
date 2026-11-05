@@ -52,6 +52,6 @@ pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/d
 
 ## Convenções
 
-- Commits em português, autor Breno Suski.
+- Commits em português, autor brenosuski17.
 - Antes de concluir uma mudança: `npm test --prefix server` e `npm run build`.
 - Mudanças visuais: conferir no navegador, em desktop e celular.
