@@ -129,7 +129,7 @@ export default function DetalheOS({ o, aoResponder }) {
 
       {o.avarias?.length > 0 && (
         <Suspense fallback={<div className="h-[420px] rounded-[28px] bg-[#0b1233] animate-pulse" />}>
-          <VistoriaCliente avarias={o.avarias} carroceria={o.veiculo.carroceria} cor={o.veiculo.cor} />
+          <VistoriaCliente avarias={o.avarias} carroceria={o.veiculo.carroceria} marca={o.veiculo.marca} cor={o.veiculo.cor} />
         </Suspense>
       )}
 

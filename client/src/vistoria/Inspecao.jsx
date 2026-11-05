@@ -14,7 +14,7 @@ import { useToast } from '../ui/Toast'
 import { avisarMudanca } from '../oficina/Layout'
 import Carro3D, { VISTAS } from './Carro3D'
 import Editor from './Editor'
-import { carroceria, centroDaZona } from './carrocerias'
+import { medidasDe, centroDaZona } from './carrocerias'
 import { ZONAS, GRAVIDADES, nomeZona, nomeTipo, corAvaria, formatarTempo } from './zonas'
 
 const EDITAVEL = ['recebido', 'diagnostico', 'orcamento', 'aprovacao']
@@ -191,7 +191,7 @@ export default function Inspecao() {
     return () => document.removeEventListener('fullscreenchange', f)
   }, [])
 
-  const c = useMemo(() => carroceria(o?.carroceria), [o?.carroceria])
+  const c = useMemo(() => medidasDe(o?.carroceria, o?.marca), [o?.carroceria, o?.marca])
   if (erro) return <div className="p-8"><ErroCarga erro={erro} tentar={recarregar} /></div>
   if (!o) return <div className="p-8 space-y-4"><Esqueleto className="h-24 w-96" /><Esqueleto className="h-[70vh]" /></div>
 
@@ -249,9 +249,10 @@ export default function Inspecao() {
     <div ref={caixa} className="tema-escuro grid lg:grid-cols-[1fr_420px] lg:h-dvh bg-[#060a1c]">
       {/* palco */}
       <section className="relative h-[66vh] min-h-[440px] lg:h-full overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,#16225c_0%,#0a1135_50%,#060a1c_100%)]">
-        <Carro3D carroceria={o.carroceria} cor={o.cor} avarias={o.avarias} rascunho={rascunho} selecionada={modo.tipo === 'editor' ? modo.inicial.id : null}
+        <Carro3D carroceria={o.carroceria} marca={o.marca} cor={o.cor} avarias={o.avarias} rascunho={rascunho} selecionada={modo.tipo === 'editor' ? modo.inicial.id : null}
           zonaAtiva={zonaAtiva} aoClicarPeca={editavel ? (p) => escolherPeca(p.zona, p) : (p) => setModo({ tipo: 'peca', zona: p.zona, ponto: null })}
-          aoSelecionar={abrirAvaria} vista={vista} girar={girar} mostrarPinos={pinos} destacarAvarias={destaque} />
+          aoSelecionar={abrirAvaria} vista={vista} girar={girar} mostrarPinos={pinos} destacarAvarias={destaque}
+          classeCredito="bottom-[62px] right-3 lg:bottom-4 lg:right-20" />
 
         <div className="absolute top-3 left-3 right-3 lg:top-4 lg:left-4 lg:right-20 flex flex-col items-start gap-2 lg:gap-2.5 pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-[#0b1230]/80 backdrop-blur-md border border-white/10 pl-2 pr-4 py-2">

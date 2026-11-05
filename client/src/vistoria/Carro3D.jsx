@@ -1,13 +1,14 @@
-// Estúdio 3D da inspeção: carros modelados do zero (hatch, sedã, SUV e picape), sem modelos de marca.
+// Estúdio 3D da inspeção: hatch da Volkswagen com modelo .glb pronto (ver MODELOS em carrocerias.js); os demais modelados
+// do zero, e o desenho aparece enquanto o modelo carrega ou se ele falhar (o .glb não vem com o repositório).
 // A lataria é um só bloco; um shader descobre a peça de cada pixel, o que permite acender a peça inteira
 // ao passar o mouse e pintar as peças com avaria pela gravidade.
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, ContactShadows } from '@react-three/drei'
+import { OrbitControls, ContactShadows, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { corGravidade, nomeZona } from './zonas'
-import { carroceria, corDaPintura, detectarZona, ZONAS_LATARIA } from './carrocerias'
+import { carroceria, corDaPintura, detectarZona, modeloDe, ZONAS_LATARIA } from './carrocerias'
 
 const SEV = { leve: 1, moderada: 2, grave: 3 }
 
@@ -82,7 +83,9 @@ varying vec3 vPosObj;
 varying vec3 vNorObj;
 float zonaIdx(vec3 p, vec3 n) {
   float dir = p.z >= 0.0 ? 1.0 : 0.0;
-  if (abs(n.z) > 0.55) {
+  bool frontal = n.x > 0.5 && p.x > uB.z;
+  bool traseira = n.x < -0.5 && p.x < uB.w;
+  if (abs(n.z) > 0.55 || (uCabine < 0.5 && abs(n.x) > 0.5 && !frontal && !traseira)) {
     if (uCabine < 0.5) {
       if (p.x > uA.y - 0.32 && p.y < uA.x + 0.36) return 3.0;
       if (p.x < uA.z + 0.16 && p.y < uA.x + 0.38) return 4.0;
@@ -94,20 +97,25 @@ float zonaIdx(vec3 p, vec3 n) {
     return b + dir;
   }
   if (uCabine > 0.5) return 1.0;
-  if (n.x > 0.5) return p.y < uA.w - 0.14 ? 3.0 : 0.0;
-  if (n.x < -0.5) return p.y < uA.x + 0.38 ? 4.0 : 2.0;
+  if (frontal) return p.y < uA.w - 0.14 ? 3.0 : 0.0;
+  if (traseira) return p.y < uA.x + 0.38 ? 4.0 : 2.0;
   if (n.y < -0.4) return 13.0 + dir;
   if (p.x > uC.y - 0.1) return 0.0;
   if (p.x < uC.z + 0.05 && p.y < uB.y + 0.1) return 2.0;
   return 1.0;
 }
+const float MISTURA_AVARIA = 0.75;
 vec3 corSev(float s) {
   return s < 1.5 ? vec3(0.98, 0.8, 0.08) : (s < 2.5 ? vec3(0.98, 0.52, 0.18) : vec3(0.96, 0.25, 0.37));
 }
 `
 
 function criarPintura(cabine) {
-  const m = new THREE.MeshPhysicalMaterial({ color: '#d8d3c6', metalness: 0.45, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06 })
+  return aplicarRealce(new THREE.MeshPhysicalMaterial({ color: '#d8d3c6', metalness: 0.45, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06 }), cabine)
+}
+
+/** Faz o material acender por peça. Posição e normal em coordenadas de mundo: o .glb comprimido tem transformação em cada nó. */
+function aplicarRealce(m, cabine = false) {
   const u = {
     uSev: { value: new Array(15).fill(0) }, uRealce: { value: -1 }, uRealce2: { value: -1 }, uCabine: { value: cabine ? 1 : 0 },
     uA: { value: new THREE.Vector4() }, uB: { value: new THREE.Vector4() }, uC: { value: new THREE.Vector4() }, uD: { value: new THREE.Vector4() },
@@ -117,14 +125,14 @@ function criarPintura(cabine) {
     Object.assign(sh.uniforms, u)
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vPosObj;\nvarying vec3 vNorObj;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPosObj = position;\nvNorObj = objectNormal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPosObj = (modelMatrix * vec4(position, 1.0)).xyz;\nvNorObj = mat3(modelMatrix) * objectNormal;')
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\n${GLSL_ZONA}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float zi = zonaIdx(vPosObj, normalize(vNorObj));
         float sev = uSev[int(zi + 0.5)];
         float realce = (abs(zi - uRealce) < 0.5 || abs(zi - uRealce2) < 0.5) ? 1.0 : 0.0;
-        if (sev > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, corSev(sev), 0.62);
+        if (sev > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, corSev(sev), MISTURA_AVARIA);
         if (realce > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.45, 0.6, 1.0), 0.42);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += realce * vec3(0.05, 0.09, 0.28) + (sev > 0.5 ? corSev(sev) * 0.07 : vec3(0.0));`)
@@ -165,13 +173,13 @@ function useMateriais() {
 
 const cacheVariantes = new Map()
 /** Versão do material com brilho na cor do realce (peça apontada) ou da gravidade. */
-function variante(mat, cor) {
-  const k = `${mat.uuid}-${cor}`
+function variante(mat, cor, mistura = 0.35, brilho = mat.emissiveIntensity || 0.55) {
+  const k = `${mat.uuid}-${cor}-${mistura}`
   if (!cacheVariantes.has(k)) {
     const v = mat.clone()
     v.emissive = new THREE.Color(cor)
-    v.emissiveIntensity = mat.emissiveIntensity ? mat.emissiveIntensity : 0.55
-    if (v.color) v.color.lerp(new THREE.Color(cor), 0.35)
+    v.emissiveIntensity = brilho
+    if (v.color) v.color.lerp(new THREE.Color(cor), mistura)
     cacheVariantes.set(k, v)
   }
   return cacheVariantes.get(k)
@@ -219,7 +227,7 @@ const Carro = memo(function Carro({ c, cor, m, refCarro, sevPorZona, realce, rea
   const ZC = c.cabineLarg / 2 + 0.08
 
   return (
-    <group ref={refCarro}>
+    <group ref={refCarro} userData={{ medidas: c }}>
       <mesh geometry={geo.corpo} material={m.corpo} userData={{ zona: 'corpo' }} />
       <mesh geometry={geo.cabine} material={m.cabine} userData={{ zona: 'cabine' }} />
       {[c.eixoD, c.eixoT].map((x) => (
@@ -263,6 +271,75 @@ const Carro = memo(function Carro({ c, cor, m, refCarro, sevPorZona, realce, rea
     </group>
   )
 })
+
+// ---------------------------------------------------------------- modelo .glb
+/** Cópia do modelo com a pintura do sistema; cada malha guarda a peça dela (extras gravados pelo otimizar-golf.mjs). */
+function prepararModelo(cena, m) {
+  const raiz = cena.clone(true)
+  const pecas = []
+  const realcados = []
+  raiz.traverse((o) => {
+    if (!o.isMesh) return
+    let extras = {}
+    for (let p = o; p && !extras.zona; p = p.parent) if (p.userData?.zona) extras = p.userData
+    if (extras.interno) { o.raycast = () => {}; return }
+    o.userData.zona = extras.zona
+    if (extras.zona === 'corpo') {
+      if (extras.pintura) o.material = m.corpo
+      else { o.material = aplicarRealce(o.material.clone()); realcados.push(o.material) }
+      return
+    }
+    if (extras.pintura) o.material = m.retrovisor
+    pecas.push({ malha: o, base: o.material, pintura: extras.pintura, zona: extras.lado ? `${extras.zona}_${extras.lado}` : extras.zona })
+  })
+  return { raiz, pecas, realcados }
+}
+
+const CarroModelo = memo(function CarroModelo({ modelo, cor, m, refCarro, sevPorZona, realce, realce2, destacar, aoPronto }) {
+  const { scene } = useGLTF(modelo.url, false, true)
+  const { raiz, pecas, realcados } = useMemo(() => prepararModelo(scene, m), [scene, m])
+  const c = modelo.medidas
+  const sev = destacar ? sevPorZona : {}
+
+  useLayoutEffect(() => {
+    configurarPintura(m.corpo, c, cor, sev, realce, realce2)
+    for (const r of realcados) configurarPintura(r, c, r.color, sev, realce, realce2)
+    m.retrovisor.color.set(cor)
+    // Peças pintadas (portas, tampa, retrovisor) usam os mesmos tons do shader da lataria, para não mudar de cor na emenda
+    for (const { malha, base, pintura, zona } of pecas) {
+      if (zona === realce || zona === realce2) malha.material = pintura ? variante(base, '#6d8bff', 0.42, 0.25) : variante(base, '#6d8bff')
+      else if (sev[zona]) {
+        const corSev = corGravidade(['', 'leve', 'moderada', 'grave'][sev[zona]])
+        malha.material = pintura ? variante(base, corSev, 0.75, 0.07) : variante(base, corSev)
+      } else malha.material = base
+    }
+  })
+  useEffect(() => {
+    aoPronto(raiz)
+    return () => aoPronto(null)
+  }, [raiz, aoPronto])
+
+  return <group ref={refCarro} userData={{ medidas: c }}><primitive object={raiz} /></group>
+})
+
+/** Sem o modelo (arquivo ausente, rede ou WebGL sem suporte), a inspeção segue com o carro desenhado. */
+class LimiteModelo extends Component {
+  state = { falhou: false }
+  static getDerivedStateFromError() { return { falhou: true } }
+  componentDidCatch(erro) { console.warn('Modelo 3D indisponível; usando o carro desenhado.', erro) }
+  render() { return this.state.falhou ? this.props.reserva : this.props.children }
+}
+
+/** Avarias salvas e o centro das peças são aproximados: encosta o ponto na superfície do modelo. */
+function encostarNoModelo(pino, raiz) {
+  const n = new THREE.Vector3(pino.nor_x, pino.nor_y, pino.nor_z).normalize()
+  const origem = new THREE.Vector3(pino.pos_x, pino.pos_y, pino.pos_z).addScaledVector(n, 0.5)
+  const hit = new THREE.Raycaster(origem, n.clone().negate(), 0, 1.2).intersectObject(raiz, true)[0]
+  if (!hit) return pino
+  const nh = hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
+  if (nh.dot(n) < 0) nh.negate()
+  return { ...pino, pos_x: hit.point.x, pos_y: hit.point.y, pos_z: hit.point.z, nor_x: nh.x, nor_y: nh.y, nor_z: nh.z }
+}
 
 // ---------------------------------------------------------------- cena
 function Ambiente() {
@@ -393,13 +470,16 @@ function Projetor({ pinos, refs }) {
 /**
  * Props: carroceria, cor, avarias, rascunho {posicao, normal}, selecionada (id), zonaAtiva,
  * aoClicarPeca({zona, posicao, normal}) — ausente = só leitura, aoSelecionar(avaria),
- * vista, girar, mostrarPinos, destacarAvarias, contagemPorZona.
+ * vista, girar, mostrarPinos, destacarAvarias, classeCredito (posição do crédito do modelo).
  */
 export default function Carro3D({
-  carroceria: tipo = 'hatch', cor, avarias = [], rascunho, selecionada, zonaAtiva, aoClicarPeca, aoSelecionar,
+  carroceria: tipo = 'hatch', marca, cor, avarias = [], rascunho, selecionada, zonaAtiva, aoClicarPeca, aoSelecionar,
   vista, girar, mostrarPinos = true, destacarAvarias = true, textoDica = 'Clique para inspecionar',
+  classeCredito = 'bottom-1.5 right-2',
 }) {
   const c = carroceria(tipo)
+  const modelo = modeloDe(tipo, marca)
+  const [raizModelo, setRaizModelo] = useState(null)
   const refCarro = useRef()
   const dica = useRef()
   const [hover, setHover] = useState(null)
@@ -422,19 +502,25 @@ export default function Carro3D({
   const pinos = useMemo(() => {
     const l = mostrarPinos ? avarias.map((a) => ({ ...a, chave: `a${a.id ?? a.numero}`, cor: a.tipo === 'servico' ? '#3d5bff' : corGravidade(a.gravidade) })) : []
     if (rascunho) l.push({ chave: 'rascunho', rascunho: true, cor: '#3d5bff', pos_x: rascunho.posicao.x, pos_y: rascunho.posicao.y, pos_z: rascunho.posicao.z, nor_x: rascunho.normal.x, nor_y: rascunho.normal.y, nor_z: rascunho.normal.z })
-    return l
-  }, [avarias, rascunho, mostrarPinos])
+    if (!raizModelo) return l
+    raizModelo.updateWorldMatrix(true, true)
+    return l.map((p) => encostarNoModelo(p, raizModelo))
+  }, [avarias, rascunho, mostrarPinos, raizModelo])
 
   function info(e) {
     const n = e.face.normal.clone().transformDirection(e.object.matrixWorld).normalize()
     const p = refCarro.current ? refCarro.current.worldToLocal(e.point.clone()) : e.point.clone()
+    const medidas = refCarro.current?.userData.medidas || c
     let base = e.object.userData.zona
     for (let o = e.object; !base && o; o = o.parent) base = o.userData?.zona
     const zona = base === 'cabine'
-      ? (Math.abs(n.z) > 0.55 ? detectarZona('corpo', p, n, c) : 'teto')
-      : detectarZona(base, p, n, c)
+      ? (Math.abs(n.z) > 0.55 ? detectarZona('corpo', p, n, medidas) : 'teto')
+      : detectarZona(base, p, n, medidas)
     return { zona, posicao: { x: +p.x.toFixed(4), y: +p.y.toFixed(4), z: +p.z.toFixed(4) }, normal: { x: +n.x.toFixed(4), y: +n.y.toFixed(4), z: +n.z.toFixed(4) } }
   }
+
+  const desenho = <Carro c={c} cor={corPintura} m={materiais} refCarro={refCarro} sevPorZona={sevPorZona} realce={hover} realce2={zonaAtiva} destacar={destacarAvarias} />
+  const credito = raizModelo && modelo?.credito
 
   return (
     <div className="relative size-full" onPointerLeave={() => setHover(null)}>
@@ -461,7 +547,13 @@ export default function Carro3D({
           }}
           onPointerOut={() => setHover(null)}
         >
-          <Carro c={c} cor={corPintura} m={materiais} refCarro={refCarro} sevPorZona={sevPorZona} realce={hover} realce2={zonaAtiva} destacar={destacarAvarias} />
+          {modelo ? (
+            <LimiteModelo reserva={desenho}>
+              <Suspense fallback={desenho}>
+                <CarroModelo modelo={modelo} cor={corPintura} m={materiais} refCarro={refCarro} sevPorZona={sevPorZona} realce={hover} realce2={zonaAtiva} destacar={destacarAvarias} aoPronto={setRaizModelo} />
+              </Suspense>
+            </LimiteModelo>
+          ) : desenho}
         </group>
 
         {pinos.map((a) => <Anel key={a.chave} a={a} cor={a.cor} />)}
@@ -487,6 +579,10 @@ export default function Carro3D({
           )
         })}
       </div>
+
+      {credito && (
+        <p className={`absolute z-10 max-w-[calc(100%-1.5rem)] rounded-md bg-[#050916]/70 px-2 py-0.5 text-right text-[11px] leading-snug text-[#c9d2f0] backdrop-blur ${classeCredito}`}>{credito}</p>
+      )}
 
       {/* dica que segue o ponteiro: nome da peça */}
       <div ref={dica} className={`pointer-events-none absolute left-0 top-0 transition-opacity duration-150 ${hover ? 'opacity-100' : 'opacity-0'}`}>

@@ -34,6 +34,32 @@ export const CARROCERIAS = {
 
 export const carroceria = (c) => CARROCERIAS[c] || CARROCERIAS.hatch
 
+// Modelos 3D prontos: gerados por client/scripts/otimizar-golf.mjs, nas mesmas coordenadas dos carros desenhados.
+// Valem só para as marcas indicadas (um Onix não pode aparecer com o emblema da VW). As medidas seguem o modelo e
+// substituem as do desenho na detecção de peça e no centro de cada peça.
+export const MODELOS = {
+  hatch: {
+    url: '/modelos/golf.glb',
+    marcas: /\b(vw|volks\s*wagen)\b/i,
+    credito: 'Modelo 3D: Volkswagen Golf GTI 2025, Sketchfab (licença Standard)',
+    medidas: {
+      nome: 'Hatch',
+      base: 0.214, frente: 2.196, tras: -2.096, capoY: 0.75, cintura: 0.95, cinturaTras: 1.0,
+      eixoD: 1.316, eixoT: -1.316, rodaR: 0.328, arco: 0.4,
+      PB: [1.114, 0.954], PT: [0.259, 1.377], teto: 1.47, TR: [-1.548, 1.326], TB: [-1.947, 1.033],
+      portas: [0.87, -0.28, -1.3], colunaB: -0.28, colunaC: -1.3, largura: 1.786, cabineLarg: 1.45, retrovisorX: 0.62,
+    },
+  },
+}
+
+export function modeloDe(tipo, marca) {
+  const modelo = MODELOS[tipo in CARROCERIAS ? tipo : 'hatch']
+  return modelo?.marcas.test(marca || '') ? modelo : null
+}
+
+/** Medidas do carro que aparece na tela: as do modelo pronto, se houver, ou as do desenho. */
+export const medidasDe = (tipo, marca) => modeloDe(tipo, marca)?.medidas || carroceria(tipo)
+
 // Peças da lataria pintadas pelo shader, na ordem dos índices usados no GLSL
 export const ZONAS_LATARIA = [
   'capo', 'teto', 'tampa_traseira', 'para_choque_dianteiro', 'para_choque_traseiro',
@@ -49,7 +75,10 @@ const COM_LADO = new Set(['para_lama_dianteiro', 'porta_dianteira', 'porta_trase
 /** Peça da lataria a partir de um ponto e da normal da superfície (mesma lógica do shader). */
 export function zonaLataria(p, n, c) {
   const lado = p.z >= 0 ? 'direita' : 'esquerda'
-  if (Math.abs(n.z) > 0.55) {
+  // Frente e traseira só valem além dos eixos; antes disso, a superfície virada para x é a parte interna do arco da roda
+  const frontal = n.x > 0.5 && p.x > c.eixoD
+  const traseira = n.x < -0.5 && p.x < c.eixoT
+  if (Math.abs(n.z) > 0.55 || (Math.abs(n.x) > 0.5 && !frontal && !traseira)) {
     if (p.x > c.frente - 0.32 && p.y < c.base + 0.36) return 'para_choque_dianteiro'
     if (p.x < c.tras + 0.16 && p.y < c.base + 0.38) return 'para_choque_traseiro'
     if (p.y < c.base + 0.08 && p.x > c.eixoT + c.arco - 0.05 && p.x < c.eixoD - c.arco + 0.05) return `soleira_${lado}`
@@ -58,8 +87,8 @@ export function zonaLataria(p, n, c) {
     else peca = p.x > c.portas[0] ? 'para_lama_dianteiro' : p.x > c.portas[1] ? 'porta_dianteira' : p.x > c.portas[2] ? 'porta_traseira' : 'lateral_traseira'
     return `${peca}_${lado}`
   }
-  if (n.x > 0.5) return p.y < c.capoY - 0.14 ? 'para_choque_dianteiro' : 'capo'
-  if (n.x < -0.5) return p.y < c.base + 0.38 ? 'para_choque_traseiro' : 'tampa_traseira'
+  if (frontal) return p.y < c.capoY - 0.14 ? 'para_choque_dianteiro' : 'capo'
+  if (traseira) return p.y < c.base + 0.38 ? 'para_choque_traseiro' : 'tampa_traseira'
   if (n.y < -0.4) return `soleira_${lado}`
   if (p.x > c.PB[0] - 0.1) return 'capo'
   if (p.x < c.TB[0] + 0.05 && p.y < c.cinturaTras + 0.1) return 'tampa_traseira'
@@ -92,7 +121,7 @@ export function centroDaZona(zona, c) {
     lateral_traseira: [meio(c.portas[2], c.tras + 0.3), c.cintura - 0.2, z, 0, 0, lado],
     soleira: [0, c.base + 0.04, z, 0, 0, lado],
     vidro_lateral: [meio(c.PB[0], c.TB[0]) * 0.8, meio(c.cintura, c.teto), (c.cabineLarg / 2 + 0.08) * lado, 0, 0, lado],
-    retrovisor: [c.PB[0] - 0.26, c.cintura + 0.08, (c.largura / 2 + 0.12) * lado, 0, 0, lado],
+    retrovisor: [c.retrovisorX ?? c.PB[0] - 0.26, c.cintura + 0.08, (c.largura / 2 + 0.12) * lado, 0, 0, lado],
     farol: [c.frente - 0.02, c.capoY - 0.1, 0.6 * lado, 0.8, 0.4, 0.4 * lado],
     lanterna: [c.tras - 0.07, c.cinturaTras - 0.2, 0.62 * lado, -1, 0, 0.3 * lado],
     roda_dianteira: [c.eixoD, c.rodaR, (c.largura / 2 + 0.02) * lado, 0, 0, lado],

@@ -48,8 +48,10 @@ pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/d
 ## Próximos passos combinados
 
 - Configurar o WhatsApp real da Meta (o Breno vai criar o app e passar as chaves).
-- Trocar os carros procedurais por modelos .glb reais (Sketchfab/Poly Haven, licença CC0/CC BY, crédito ao autor),
-  mantendo cor do veículo, clique por peça e marcações de avaria. Preferir modelos com peças separadas.
+- Trocar os carros procedurais de sedã, SUV e picape por modelos .glb reais (Sketchfab/Poly Haven, licença CC0/CC BY, crédito
+  ao autor), como já feito nos hatches da Volkswagen: `client/scripts/otimizar-golf.mjs` gera o .glb e `MODELOS` em
+  `carrocerias.js` guarda marcas, medidas e crédito. Manter cor do veículo, clique por peça e marcações de avaria. Preferir
+  modelos com peças separadas. O `golf.glb` tem licença Standard do Sketchfab (sem redistribuição): nunca commitar.
 
 ## Convenções
 

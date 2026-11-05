@@ -6,7 +6,7 @@ import { moeda } from '../lib/formato'
 import Carro3D, { VISTAS } from './Carro3D'
 import { corAvaria, nomeTipo } from './zonas'
 
-export default function VistoriaCliente({ avarias, carroceria, cor }) {
+export default function VistoriaCliente({ avarias, carroceria, marca, cor }) {
   const [sel, setSel] = useState(null)
   const [vista, setVista] = useState(null)
   const [girar, setGirar] = useState(true)
@@ -24,7 +24,7 @@ export default function VistoriaCliente({ avarias, carroceria, cor }) {
   return (
     <section className="rounded-[28px] overflow-hidden bg-[#070c22] text-white" aria-labelledby="t-avarias">
       <div className="relative h-[300px] sm:h-[360px] bg-[radial-gradient(ellipse_at_50%_30%,#1a2660_0%,#0b1233_55%,#070c22_100%)]">
-        <Carro3D carroceria={carroceria} cor={cor} avarias={lista} selecionada={sel} aoSelecionar={focar} vista={vista} girar={girar} />
+        <Carro3D carroceria={carroceria} marca={marca} cor={cor} avarias={lista} selecionada={sel} aoSelecionar={focar} vista={vista} girar={girar} />
         <div className="absolute top-4 left-5 right-5 flex items-start justify-between pointer-events-none">
           <div>
             <h2 id="t-avarias" className="text-[19px] font-extrabold">Inspeção do veículo</h2>

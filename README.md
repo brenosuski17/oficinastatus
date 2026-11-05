@@ -69,6 +69,22 @@ Para rodar como em produção, com um único servidor entregando a API e o site:
 
 Testes automatizados: `npm test --prefix server`.
 
+### Modelo 3D do Golf (opcional)
+
+Na inspeção 3D, os hatches da Volkswagen usam o modelo **Volkswagen Golf GTI 2025**, do Sketchfab. A licença Standard do Sketchfab proíbe redistribuir o arquivo, por isso `client/public/modelos/golf.glb` está no `.gitignore` e não vem com o repositório. Sem ele, o sistema funciona normalmente e esses veículos aparecem com o carro desenhado, como todos os outros.
+
+Para usar o modelo na sua máquina:
+
+1. Com uma conta no [Sketchfab](https://sketchfab.com), procure por "Volkswagen Golf GTI 2025", confira se a licença é a Standard e baixe o modelo no formato original.
+2. Extraia o `.zip`. O arquivo usado é `source/golf_gti_my25_lights_on.glb`.
+3. Depois de `npm run instalar`, gere a versão otimizada:
+
+   ```bash
+   node client/scripts/otimizar-golf.mjs caminho/para/golf_gti_my25_lights_on.glb
+   ```
+
+O script simplifica e comprime o modelo (de cerca de 18 MB para 2,3 MB), separa as peças para o clique da inspeção e grava `client/public/modelos/golf.glb`. Para rodar como em produção, gere o arquivo antes do `npm run build`.
+
 ## Configurando as integrações (`server/.env`)
 
 O sistema funciona sem nenhuma integração, mas cada uma liga uma parte real do fluxo. Depois de alterar o `.env`, reinicie o servidor e confira em **Integrações**, no menu da oficina, onde há botões de teste.

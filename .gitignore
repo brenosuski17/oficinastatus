@@ -2,5 +2,7 @@ node_modules/
 client/dist/
 server/data/
 server/.env
+# Licença Standard do Sketchfab proíbe redistribuir: cada um gera o seu (veja o README)
+client/public/modelos/golf.glb
 *.log
 .DS_Store
