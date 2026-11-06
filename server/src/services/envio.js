@@ -91,12 +91,12 @@ async function enviarWhatsApp({ telefone, texto, parametros }) {
 }
 
 const marcar = db.prepare(
-  "UPDATE mensagens SET status = ?, erro = ?, erro_codigo = ?, id_externo = ?, enviada_em = CASE WHEN ? = 'enviada' THEN datetime('now') ELSE enviada_em END WHERE id = ?"
+  "UPDATE mensagens SET status = ?, erro = ?, erro_codigo = ?, id_externo = ?, enviada_em = CASE WHEN ?::text = 'enviada' THEN now() ELSE enviada_em END WHERE id = ?"
 );
 
 /** Envia uma mensagem já registrada (status pendente) pelo canal dela e atualiza o resultado. */
 async function despachar(id, extra = {}) {
-  const m = db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
+  const m = await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
   if (!m || m.direcao !== 'saida') return;
   try {
     let externo = null;
@@ -105,27 +105,29 @@ async function despachar(id, extra = {}) {
     } else if (m.canal === 'whatsapp') {
       externo = await enviarWhatsApp({ telefone: m.destinatario, texto: m.conteudo, parametros: extra.parametros || [] });
     } else return;
-    marcar.run('enviada', null, null, externo, 'enviada', id);
+    await marcar.run('enviada', null, null, externo, 'enviada', id);
   } catch (e) {
-    marcar.run('falhou', String(e.message || e).slice(0, 500), e.codigo, null, 'falhou', id);
+    await marcar.run('falhou', String(e.message || e).slice(0, 500), e.codigo, null, 'falhou', id);
     console.error(`[envio] mensagem ${id} (${m.canal}) falhou:`, e.message);
   }
 }
 
-// Fila simples em memória: as mensagens são enviadas logo depois que a transação do banco termina.
+// Fila simples em memória: as mensagens são enviadas logo depois do commit, e não saem se a transação for desfeita.
 const fila = [];
 let processando = false;
 function enfileirar(id, extra) {
-  fila.push([id, extra]);
-  if (!processando) {
-    processando = true; // marca já no agendamento para não abrir dois processadores
-    setImmediate(processar);
-  }
+  db.aposCommit(() => {
+    fila.push([id, extra]);
+    if (!processando) {
+      processando = true; // marca já no agendamento para não abrir dois processadores
+      setImmediate(processar);
+    }
+  });
 }
 async function processar() {
   while (fila.length) {
     const [id, extra] = fila.shift();
-    await despachar(id, extra);
+    await despachar(id, extra).catch((e) => console.error(`[envio] mensagem ${id} não atualizada:`, e.message));
   }
   processando = false;
 }

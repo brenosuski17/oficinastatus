@@ -1,4 +1,4 @@
-// Datas do SQLite vêm em UTC sem fuso ("2026-11-04 03:12:00")
+// Datas da API vêm em UTC sem fuso ("2026-11-04 03:12:00")
 export const data = (s) => (s ? new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z') : null)
 
 export const dataHora = (s) =>

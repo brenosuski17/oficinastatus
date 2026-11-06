@@ -1,225 +1,106 @@
-const path = require('path');
-const fs = require('fs');
-const Database = require('./sqlite');
+// Conexão com o PostgreSQL (DATABASE_URL). O esquema fica nas migrations de server/migrations.
+// Interface usada pelo sistema: await db.prepare(sql).get/all/run(...valores), com "?" nos parâmetros.
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { Pool, types } = require('pg');
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'oficina.db');
-if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// A API continua entregando os mesmos formatos ao front-end:
+// COUNT e NUMERIC como número, DATE como "2026-11-06" e TIMESTAMPTZ como "2026-11-06 04:13:51" em UTC.
+const lerTimestamp = types.getTypeParser(1184);
+types.setTypeParser(20, Number);
+types.setTypeParser(1700, Number.parseFloat);
+types.setTypeParser(1082, (s) => s);
+types.setTypeParser(1184, (s) => lerTimestamp(s).toISOString().slice(0, 19).replace('T', ' '));
 
-const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// Trava única das transações: elas rodam uma de cada vez, para duas pessoas não avançarem a mesma OS ao mesmo tempo.
+const TRAVA_TRANSACOES = 7423002;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS clientes (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome        TEXT NOT NULL,
-  telefone    TEXT NOT NULL,                 -- somente dígitos, com DDD
-  email       TEXT,
-  cpf         TEXT,
-  criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
-);
+const contexto = new AsyncLocalStorage();
+let pool = null;
 
--- Contas de acesso: equipe da oficina (admin, mecanico) e clientes
-CREATE TABLE IF NOT EXISTS usuarios (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome             TEXT NOT NULL,
-  email            TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  senha_hash       TEXT,                      -- NULL até o usuário criar a senha
-  papel            TEXT NOT NULL CHECK (papel IN ('admin','mecanico','cliente')),
-  cliente_id       INTEGER UNIQUE REFERENCES clientes(id) ON DELETE CASCADE,
-  convite_token    TEXT UNIQUE,               -- link para criar/redefinir senha
-  convite_expira   TEXT,
-  ativo            INTEGER NOT NULL DEFAULT 1,
-  criado_em        TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS veiculos (
-  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-  cliente_id           INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-  placa                TEXT NOT NULL UNIQUE,
-  tipo                 TEXT NOT NULL DEFAULT 'cars' CHECK (tipo IN ('cars','motorcycles','trucks')),
-  marca                TEXT NOT NULL,
-  modelo               TEXT NOT NULL,
-  ano_fabricacao       INTEGER,
-  ano_modelo           INTEGER,
-  combustivel          TEXT,
-  cor                  TEXT,
-  quilometragem        INTEGER,
-  fipe_codigo          TEXT,
-  fipe_ano_id          TEXT,
-  fipe_valor           TEXT,
-  fipe_mes_referencia  TEXT,
-  fipe_consultado_em   TEXT,
-  origem_dados         TEXT NOT NULL DEFAULT 'manual' CHECK (origem_dados IN ('manual','fipe','placa')),
-  carroceria           TEXT NOT NULL DEFAULT 'hatch' CHECK (carroceria IN ('hatch','sedan','suv','picape')),  -- modelo 3D usado na inspeção
-  criado_em            TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS ordens_servico (
-  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-  veiculo_id          INTEGER NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
-  mecanico_id         INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-  codigo_publico      TEXT NOT NULL UNIQUE,
-  problema_relatado   TEXT NOT NULL,
-  diagnostico         TEXT,
-  km_entrada          INTEGER,
-  previsao_entrega    TEXT,
-  aguardando_peca     INTEGER NOT NULL DEFAULT 0,
-  situacao            TEXT NOT NULL DEFAULT 'aberta' CHECK (situacao IN ('aberta','recusada','finalizada')),
-  criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
-  atualizado_em       TEXT NOT NULL DEFAULT (datetime('now')),
-  entregue_em         TEXT
-);
-
--- 7 etapas por OS: recebido → diagnostico → orcamento → aprovacao → execucao → pronto → entregue
-CREATE TABLE IF NOT EXISTS etapas (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id      INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
-  tipo          TEXT NOT NULL CHECK (tipo IN ('recebido','diagnostico','orcamento','aprovacao','execucao','pronto','entregue')),
-  sequencia     INTEGER NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','em_andamento','concluida','recusada')),
-  observacao    TEXT,
-  responsavel_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-  iniciada_em   TEXT,
-  concluida_em  TEXT,
-  UNIQUE (ordem_id, tipo)
-);
-
--- Orçamento por itens (peças e mão de obra); o cliente aprova item por item
-CREATE TABLE IF NOT EXISTS itens_orcamento (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id        INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
-  tipo            TEXT NOT NULL CHECK (tipo IN ('peca','servico')),
-  descricao       TEXT NOT NULL,
-  quantidade      REAL NOT NULL DEFAULT 1 CHECK (quantidade > 0),
-  valor_unitario  REAL NOT NULL CHECK (valor_unitario >= 0),
-  aprovado        INTEGER,                    -- NULL = sem resposta, 1 = aprovado, 0 = recusado
-  criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS fotos (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id    INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
-  arquivo     TEXT NOT NULL,
-  legenda     TEXT,
-  momento     TEXT NOT NULL DEFAULT 'entrada' CHECK (momento IN ('entrada','diagnostico','execucao','entrega')),
-  enviada_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-  criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS mensagens (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id      INTEGER REFERENCES ordens_servico(id) ON DELETE CASCADE,  -- NULL = teste de Ajustes > Integrações
-  etapa_id      INTEGER REFERENCES etapas(id) ON DELETE SET NULL,
-  canal         TEXT NOT NULL CHECK (canal IN ('email','whatsapp','sistema')),
-  direcao       TEXT NOT NULL CHECK (direcao IN ('saida','entrada')),
-  destinatario  TEXT,
-  assunto       TEXT,
-  conteudo      TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','enviada','falhou','recebida')),
-  erro          TEXT,
-  id_externo    TEXT,                          -- id retornado pelo provedor (SMTP / Meta)
-  link_envio    TEXT,                          -- wa.me, usado quando a API do WhatsApp não está configurada
-  criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
-  enviada_em    TEXT,
-  status_entrega    TEXT CHECK (status_entrega IN ('sent','delivered','read','failed')),  -- webhook da Meta
-  status_entrega_em TEXT,
-  erro_codigo       INTEGER                      -- código de erro da Meta
-);
-
--- Vistoria 3D: cada ponto marcado no carro é uma avaria, com os serviços escolhidos para ela
-CREATE TABLE IF NOT EXISTS avarias (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id    INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
-  numero      INTEGER NOT NULL,                  -- nº exibido no pino (1, 2, 3…)
-  zona        TEXT NOT NULL,                     -- peça do carro (porta_dianteira_direita, capo…)
-  tipo        TEXT NOT NULL CHECK (tipo IN ('amassado','risco','trinca','quebra','corrosao','pintura','servico')),  -- servico = serviço sem avaria
-  gravidade   TEXT NOT NULL CHECK (gravidade IN ('leve','moderada','grave')),
-  pos_x REAL NOT NULL, pos_y REAL NOT NULL, pos_z REAL NOT NULL,  -- ponto no modelo 3D
-  nor_x REAL NOT NULL DEFAULT 0, nor_y REAL NOT NULL DEFAULT 1, nor_z REAL NOT NULL DEFAULT 0,
-  observacao  TEXT,
-  orcada      INTEGER NOT NULL DEFAULT 0,        -- 1 = já virou itens do orçamento
-  criado_por  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-  criado_em   TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (ordem_id, numero)
-);
-
--- Tabela de preços da oficina: serviços por peça
-CREATE TABLE IF NOT EXISTS catalogo_servicos (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  codigo    TEXT NOT NULL,                       -- martelinho, recuperacao, pintura…
-  zona      TEXT NOT NULL,                       -- grupo de peça (porta_dianteira, capo, para_brisa…)
-  nome      TEXT NOT NULL,
-  valor     REAL NOT NULL CHECK (valor >= 0),
-  minutos   INTEGER NOT NULL DEFAULT 60,
-  categoria TEXT,                                -- funilaria, pintura, vidros, eletrica, estetica, mecanica, pecas
-  ativo     INTEGER NOT NULL DEFAULT 1,
-  UNIQUE (codigo, zona)
-);
-
-CREATE TABLE IF NOT EXISTS avaria_servicos (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  avaria_id    INTEGER NOT NULL REFERENCES avarias(id) ON DELETE CASCADE,
-  catalogo_id  INTEGER REFERENCES catalogo_servicos(id) ON DELETE SET NULL,
-  descricao    TEXT NOT NULL,
-  valor        REAL NOT NULL CHECK (valor >= 0),
-  minutos      INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_avarias_ordem ON avarias(ordem_id);
-CREATE INDEX IF NOT EXISTS idx_avaria_serv ON avaria_servicos(avaria_id);
-CREATE INDEX IF NOT EXISTS idx_veiculos_cliente ON veiculos(cliente_id);
-CREATE INDEX IF NOT EXISTS idx_ordens_veiculo   ON ordens_servico(veiculo_id);
-CREATE INDEX IF NOT EXISTS idx_ordens_mecanico  ON ordens_servico(mecanico_id);
-CREATE INDEX IF NOT EXISTS idx_etapas_ordem     ON etapas(ordem_id);
-CREATE INDEX IF NOT EXISTS idx_itens_ordem      ON itens_orcamento(ordem_id);
-CREATE INDEX IF NOT EXISTS idx_fotos_ordem      ON fotos(ordem_id);
-CREATE INDEX IF NOT EXISTS idx_mensagens_ordem  ON mensagens(ordem_id);
-`);
-
-// ---------------------------------------------------------------- migrações de bancos antigos
-const colunas = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
-if (!colunas('veiculos').includes('carroceria'))
-  db.exec("ALTER TABLE veiculos ADD COLUMN carroceria TEXT NOT NULL DEFAULT 'hatch'");
-if (!colunas('catalogo_servicos').includes('categoria'))
-  db.exec('ALTER TABLE catalogo_servicos ADD COLUMN categoria TEXT');
-// "Serviço sem avaria" exige refazer a tabela, porque o SQLite não altera CHECK
-const sqlAvarias = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'avarias'").get()?.sql || '';
-if (sqlAvarias && !sqlAvarias.includes("'servico'")) {
-  db.pragma('foreign_keys = OFF');
-  db.transaction(() => {
-    db.exec(sqlAvarias.replace('CREATE TABLE avarias', 'CREATE TABLE avarias_nova').replace("'pintura')", "'pintura','servico')"));
-    db.exec('INSERT INTO avarias_nova SELECT * FROM avarias; DROP TABLE avarias; ALTER TABLE avarias_nova RENAME TO avarias;');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_avarias_ordem ON avarias(ordem_id)');
-  })();
-  db.pragma('foreign_keys = ON');
+function obterPool() {
+  if (!pool) {
+    if (!process.env.DATABASE_URL) throw new Error('Defina DATABASE_URL no server/.env (veja o .env.example).');
+    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    pool.on('error', (e) => console.error('[banco] conexão perdida:', e.message));
+  }
+  return pool;
 }
 
-// Migração: bancos criados antes da vistoria 3D não têm o vínculo item ↔ avaria
-if (!db.prepare('PRAGMA table_info(itens_orcamento)').all().some((c) => c.name === 'avaria_id')) {
-  db.exec('ALTER TABLE itens_orcamento ADD COLUMN avaria_id INTEGER REFERENCES avarias(id) ON DELETE SET NULL');
+const alvo = () => contexto.getStore()?.cliente ?? obterPool();
+const paraPg = (sql) => { let n = 0; return sql.replace(/\?/g, () => `$${++n}`); };
+const valor = (v) => (v === undefined || Number.isNaN(v) ? null : typeof v === 'boolean' ? Number(v) : v);
+const consultar = (sql, valores) => alvo().query(paraPg(sql), valores.map(valor));
+
+class Comando {
+  constructor(sql) { this.sql = sql; }
+
+  async get(...valores) { return (await consultar(this.sql, valores)).rows[0]; }
+
+  async all(...valores) { return (await consultar(this.sql, valores)).rows; }
+
+  /** Em INSERT, devolve o id criado em lastInsertRowid. */
+  async run(...valores) {
+    const inserir = /^\s*INSERT\b/i.test(this.sql) && !/\bRETURNING\b/i.test(this.sql);
+    const r = await consultar(inserir ? `${this.sql} RETURNING id` : this.sql, valores);
+    return { changes: r.rowCount, lastInsertRowid: inserir ? r.rows[0]?.id : undefined };
+  }
 }
 
-// Migração: os testes de Integrações não têm OS, e o SQLite só tira o NOT NULL refazendo a tabela
-if (db.prepare('PRAGMA table_info(mensagens)').all().find((c) => c.name === 'ordem_id').notnull) {
-  const sqlMensagens = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'mensagens'").get().sql;
-  db.pragma('foreign_keys = OFF');
-  db.transaction(() => {
-    db.exec(sqlMensagens.replace('CREATE TABLE mensagens', 'CREATE TABLE mensagens_nova').replace(/ordem_id(\s+)INTEGER NOT NULL/, 'ordem_id$1INTEGER'));
-    db.exec('INSERT INTO mensagens_nova SELECT * FROM mensagens; DROP TABLE mensagens; ALTER TABLE mensagens_nova RENAME TO mensagens;');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_ordem ON mensagens(ordem_id)');
-  })();
-  db.pragma('foreign_keys = ON');
-}
-// Migração: status de entrega informados pelo webhook da Meta
-if (!colunas('mensagens').includes('status_entrega')) {
-  db.exec(`ALTER TABLE mensagens ADD COLUMN status_entrega TEXT CHECK (status_entrega IN ('sent','delivered','read','failed'));
-           ALTER TABLE mensagens ADD COLUMN status_entrega_em TEXT;
-           ALTER TABLE mensagens ADD COLUMN erro_codigo INTEGER;`);
-}
-db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(id_externo)');
+const prepare = (sql) => new Comando(sql);
+const exec = (sql) => alvo().query(sql);
 
-module.exports = db;
+/** Devolve uma função que roda `fn` numa transação. Dentro dela, todas as consultas usam a mesma conexão. */
+function transaction(fn) {
+  return async function (...args) {
+    const atual = contexto.getStore();
+    if (atual) {
+      const ponto = `sp${++atual.nivel}`;
+      const pendentes = atual.aposCommit.length;
+      await atual.cliente.query(`SAVEPOINT ${ponto}`);
+      try {
+        const r = await fn(...args);
+        await atual.cliente.query(`RELEASE ${ponto}`);
+        return r;
+      } catch (e) {
+        await atual.cliente.query(`ROLLBACK TO ${ponto}; RELEASE ${ponto}`);
+        atual.aposCommit.length = pendentes;
+        throw e;
+      }
+    }
 
-// Preenche a tabela de preços na primeira execução
-require('./services/catalogo').garantirCatalogo();
+    const cliente = await obterPool().connect();
+    const loja = { cliente, nivel: 0, aposCommit: [] };
+    let falhaNaConexao;
+    let r;
+    try {
+      r = await contexto.run(loja, async () => {
+        await cliente.query('BEGIN');
+        await cliente.query('SELECT pg_advisory_xact_lock($1)', [TRAVA_TRANSACOES]);
+        const resultado = await fn(...args);
+        await cliente.query('COMMIT');
+        return resultado;
+      });
+    } catch (e) {
+      await cliente.query('ROLLBACK').catch((erro) => { falhaNaConexao = erro; });
+      throw e;
+    } finally {
+      cliente.release(falhaNaConexao);
+    }
+    for (const acao of loja.aposCommit) acao();
+    return r;
+  };
+}
+
+/** Roda `acao` depois do commit da transação atual (ou agora, fora de transação). Se houver rollback, ela não roda. */
+function aposCommit(acao) {
+  const loja = contexto.getStore();
+  if (loja) loja.aposCommit.push(acao);
+  else acao();
+}
+
+async function fechar() {
+  if (pool) await pool.end();
+  pool = null;
+}
+
+module.exports = { prepare, exec, transaction, aposCommit, conectar: () => obterPool().connect(), fechar };

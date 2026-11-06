@@ -23,7 +23,7 @@ router.get('/', (req, res) => {
 });
 
 // A assinatura é calculada sobre os bytes originais, por isso o corpo chega aqui sem passar pelo express.json.
-router.post('/', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const { appSecret } = config.whatsapp();
   if (!appSecret) {
     console.error('[webhook] aviso recusado: defina WHATSAPP_APP_SECRET no .env.');
@@ -37,7 +37,7 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
   }
   let dados;
   try { dados = JSON.parse(corpo.toString('utf8')); } catch { return res.sendStatus(400); }
-  statusWhatsapp.registrar(dados);
+  await statusWhatsapp.registrar(dados);
   res.sendStatus(200);
 });
 

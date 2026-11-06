@@ -27,7 +27,7 @@ erDiagram
         TEXT telefone "WhatsApp com DDD"
         TEXT email
         TEXT cpf
-        TEXT criado_em
+        TIMESTAMPTZ criado_em
     }
     USUARIOS {
         INTEGER id PK
@@ -37,7 +37,7 @@ erDiagram
         TEXT papel "admin | mecanico | cliente"
         INTEGER cliente_id FK "só para clientes"
         TEXT convite_token "link de criar senha"
-        TEXT convite_expira
+        TIMESTAMPTZ convite_expira
         INTEGER ativo
     }
     VEICULOS {
@@ -65,11 +65,11 @@ erDiagram
         TEXT problema_relatado
         TEXT diagnostico
         INTEGER km_entrada
-        TEXT previsao_entrega
+        DATE previsao_entrega
         INTEGER aguardando_peca
         TEXT situacao "aberta | recusada | finalizada"
-        TEXT criado_em
-        TEXT entregue_em
+        TIMESTAMPTZ criado_em
+        TIMESTAMPTZ entregue_em
     }
     ETAPAS {
         INTEGER id PK
@@ -79,16 +79,16 @@ erDiagram
         TEXT status "pendente | em_andamento | concluida | recusada"
         TEXT observacao
         INTEGER responsavel_id FK
-        TEXT iniciada_em
-        TEXT concluida_em
+        TIMESTAMPTZ iniciada_em
+        TIMESTAMPTZ concluida_em
     }
     ITENS_ORCAMENTO {
         INTEGER id PK
         INTEGER ordem_id FK
         TEXT tipo "peca | servico"
         TEXT descricao
-        REAL quantidade
-        REAL valor_unitario
+        NUMERIC quantidade
+        NUMERIC valor_unitario
         INTEGER aprovado "NULL | 1 | 0"
         INTEGER avaria_id FK "quando veio da vistoria"
     }
@@ -106,8 +106,8 @@ erDiagram
         TEXT zona "peça: porta_dianteira_direita..."
         TEXT tipo "amassado | risco | trinca | quebra | corrosao | pintura"
         TEXT gravidade "leve | moderada | grave"
-        REAL pos_x_y_z "ponto no modelo 3D"
-        REAL nor_x_y_z "normal da superfície"
+        DOUBLE_PRECISION pos_x_y_z "ponto no modelo 3D"
+        DOUBLE_PRECISION nor_x_y_z "normal da superfície"
         INTEGER orcada
     }
     AVARIA_SERVICOS {
@@ -115,7 +115,7 @@ erDiagram
         INTEGER avaria_id FK
         INTEGER catalogo_id FK
         TEXT descricao
-        REAL valor
+        NUMERIC valor
         INTEGER minutos
     }
     CATALOGO_SERVICOS {
@@ -123,7 +123,7 @@ erDiagram
         TEXT codigo "martelinho, pintura..."
         TEXT zona "grupo de peça"
         TEXT nome
-        REAL valor
+        NUMERIC valor
         INTEGER minutos
     }
     MENSAGENS {
@@ -138,9 +138,9 @@ erDiagram
         TEXT status "pendente | enviada | falhou | recebida"
         TEXT erro
         TEXT id_externo "id do SMTP ou da Meta"
-        TEXT enviada_em
+        TIMESTAMPTZ enviada_em
         TEXT status_entrega "sent | delivered | read | failed"
-        TEXT status_entrega_em
+        TIMESTAMPTZ status_entrega_em
         INTEGER erro_codigo "código de erro da Meta"
     }
 ```

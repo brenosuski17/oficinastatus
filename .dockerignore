@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+.git
+docs
+*.md
+server/.env
+server/data
+server/test
+# Licença Standard do Sketchfab proíbe redistribuir: não pode entrar numa imagem publicável
+client/public/modelos/golf.glb

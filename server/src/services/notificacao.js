@@ -11,8 +11,8 @@ function linkWhatsApp(telefone, texto) {
   return `https://wa.me/${envio.numeroWhats(telefone)}?text=${encodeURIComponent(texto)}`;
 }
 
-function contexto(ordemId) {
-  const o = db.prepare(
+async function contexto(ordemId) {
+  const o = await db.prepare(
     `SELECT o.*, v.placa, v.marca, v.modelo, c.nome AS cliente_nome, c.telefone, c.email,
             (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento WHERE ordem_id = o.id) AS total,
             (SELECT COALESCE(SUM(quantidade * valor_unitario), 0) FROM itens_orcamento WHERE ordem_id = o.id AND aprovado = 1) AS total_aprovado
@@ -93,8 +93,8 @@ const inserir = db.prepare(
  * Registra e envia a notificação do evento pelos canais disponíveis.
  * Deve ser chamada dentro da transação da mudança de etapa: o envio real acontece logo após o commit.
  */
-function notificar(ordemId, evento, etapaId = null, { conviteLink } = {}) {
-  const c = contexto(ordemId);
+async function notificar(ordemId, evento, etapaId = null, { conviteLink } = {}) {
+  const c = await contexto(ordemId);
   const e = EVENTOS[evento](c);
   const status = config.status();
   const textoCompleto = `${e.texto}\n\nAcompanhe: ${c.link}`;
@@ -103,21 +103,21 @@ function notificar(ordemId, evento, etapaId = null, { conviteLink } = {}) {
     const texto = conviteLink
       ? `${e.texto}\n\nCrie sua senha para ver todos os seus veículos e o histórico de serviços: ${conviteLink}`
       : e.texto;
-    const id = inserir.run(ordemId, etapaId, 'email', c.email, e.assunto, texto, null).lastInsertRowid;
+    const { lastInsertRowid: id } = await inserir.run(ordemId, etapaId, 'email', c.email, e.assunto, texto, null);
     envio.enfileirar(id, { email: { link: c.link, botao: e.botao, titulo: e.assunto } });
   }
 
   if (status.whatsapp.ativo) {
-    const id = inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, null).lastInsertRowid;
+    const { lastInsertRowid: id } = await inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, null);
     envio.enfileirar(id, { parametros: [c.primeiro, e.resumo, c.link] });
   } else {
     // Sem a API da Meta: a mensagem fica pronta para a oficina enviar com um clique (WhatsApp Web/app).
-    inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, linkWhatsApp(c.telefone, textoCompleto));
+    await inserir.run(ordemId, etapaId, 'whatsapp', c.telefone, e.assunto, textoCompleto, linkWhatsApp(c.telefone, textoCompleto));
   }
 }
 
-function registrarEntrada(ordemId, etapaId, texto) {
-  db.prepare(
+async function registrarEntrada(ordemId, etapaId, texto) {
+  await db.prepare(
     "INSERT INTO mensagens (ordem_id, etapa_id, canal, direcao, conteudo, status) VALUES (?, ?, 'sistema', 'entrada', ?, 'recebida')"
   ).run(ordemId, etapaId, texto);
 }

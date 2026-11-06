@@ -12,14 +12,14 @@ function descricaoErro(erro) {
 
 const buscar = db.prepare("SELECT id, status_entrega FROM mensagens WHERE id_externo = ? AND canal = 'whatsapp'");
 const atualizar = db.prepare(
-  `UPDATE mensagens SET status_entrega = ?, status_entrega_em = COALESCE(datetime(?, 'unixepoch'), datetime('now')),
+  `UPDATE mensagens SET status_entrega = ?, status_entrega_em = COALESCE(to_timestamp(?::double precision), now()),
           status = COALESCE(?, status), erro = COALESCE(?, erro), erro_codigo = COALESCE(?, erro_codigo)
     WHERE id = ?`
 );
 
-function aplicar({ id, status, timestamp, errors }) {
+async function aplicar({ id, status, timestamp, errors }) {
   if (!ORDEM[status]) return;
-  const m = buscar.get(String(id));
+  const m = await buscar.get(String(id));
   if (!m) {
     console.warn(`[webhook] status "${status}" de uma mensagem desconhecida: ${id}`);
     return;
@@ -27,15 +27,15 @@ function aplicar({ id, status, timestamp, errors }) {
   if (ORDEM[status] <= (ORDEM[m.status_entrega] || 0)) return;
   const falhou = status === 'failed';
   const erro = errors?.[0];
-  atualizar.run(status, Number(timestamp) || null, falhou ? 'falhou' : null, falhou ? descricaoErro(erro) : null, falhou ? erro?.code : null, m.id);
+  await atualizar.run(status, Number(timestamp) || null, falhou ? 'falhou' : null, falhou ? descricaoErro(erro) : null, falhou ? erro?.code : null, m.id);
   if (falhou) console.error(`[webhook] mensagem ${m.id} falhou na Meta (${erro?.code}): ${descricaoErro(erro)}`);
 }
 
 /** Processa o corpo inteiro de um aviso do webhook (entry[].changes[].value.statuses[]). */
-const registrar = db.transaction((corpo) => {
+const registrar = db.transaction(async (corpo) => {
   for (const entrada of corpo?.entry ?? []) {
     for (const mudanca of entrada?.changes ?? []) {
-      for (const status of mudanca?.value?.statuses ?? []) aplicar(status);
+      for (const status of mudanca?.value?.statuses ?? []) await aplicar(status);
     }
   }
 });

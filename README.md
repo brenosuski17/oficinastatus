@@ -41,33 +41,56 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 
 | Camada | Tecnologia |
 |---|---|
-| Back-end | Node.js 22.13+, Express, SQLite embutido do Node (node:sqlite), JWT (jsonwebtoken), bcrypt, Nodemailer, Multer |
-| Banco de dados | SQLite (`server/data/oficina.db`, criado automaticamente) |
+| Back-end | Node.js 22.13+, Express, node-postgres (pg), JWT (jsonwebtoken), bcrypt, Nodemailer, Multer |
+| Banco de dados | PostgreSQL 17, com migrations versionadas em `server/migrations` |
+| Ambiente | Docker Compose (aplicação + PostgreSQL) |
 | Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide, Three.js + React Three Fiber (vistoria 3D) |
 | APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · WhatsApp Cloud API (Meta) |
-| Testes | `node:test`, com servidores SMTP e HTTP locais que recebem as mesmas requisições que os serviços reais |
+| Testes | `node:test`, com servidores SMTP e HTTP locais que recebem as mesmas requisições que os serviços reais e um schema descartável do PostgreSQL |
 
 ## Como rodar
 
-Pré-requisito: [Node.js](https://nodejs.org) 22 ou superior (versão LTS).
+### Com Docker (ambiente completo)
+
+Pré-requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+```bash
+cp server/.env.example server/.env        # no Windows: copy server\.env.example server\.env
+docker compose up --build                 # sobe o PostgreSQL e a aplicação e aplica as migrations
+docker compose exec app node src/seed.js  # opcional, em outro terminal: dados de demonstração
+```
+
+Abra **http://localhost:3333**. Os dados e as fotos ficam em volumes do Docker e continuam lá depois de `docker compose down`. O comando `docker compose down -v` apaga tudo.
+
+### Em desenvolvimento
+
+Pré-requisitos: [Node.js](https://nodejs.org) 22 ou superior (versão LTS) e o Docker Desktop, usado só para o banco.
 
 ```bash
 npm run instalar                          # instala raiz, servidor e cliente
 cp server/.env.example server/.env        # no Windows: copy server\.env.example server\.env
-npm run seed                              # opcional: dados de demonstração
+docker compose up -d postgres             # PostgreSQL em localhost:5433
+npm run migrate                           # cria ou atualiza as tabelas
+npm run seed                              # opcional: apaga os dados e cria a demonstração
 npm run dev                               # API em :3333 e site em :5173
 ```
 
-Abra **http://localhost:5173**.
+Abra **http://localhost:5173**. O `npm run dev` e a aplicação do Compose usam a porta 3333, então pare um antes de subir o outro (`docker compose stop app`).
 
 - **Sem o seed:** a primeira tela pede para criar a conta do administrador.
 - **Com o seed (demonstração):** use a senha `oficina123` em todas as contas.
   - Oficina: `admin@oficina.com` (administrador), `arthur@oficina.com` e `rafael@oficina.com` (mecânicos).
   - Clientes: `ana@cliente.com`, `joao@cliente.com` (tem orçamento para aprovar), `marcia@cliente.com`, `luciana@cliente.com` e `fernanda@cliente.com` (OS 16, com vistoria 3D e orçamento gerado pelas avarias).
 
-Para rodar como em produção, com um único servidor entregando a API e o site: `npm run build` e depois `npm start`. Acesse http://localhost:3333 e ajuste `APP_URL` no `.env`.
+Para rodar sem Docker como em produção, com um único servidor entregando a API e o site: `npm run build`, `npm run migrate` e depois `npm start`. Acesse http://localhost:3333 e ajuste `APP_URL` no `.env`.
 
-Testes automatizados: `npm test --prefix server`.
+Testes automatizados: `npm test --prefix server`, com o PostgreSQL do Compose no ar. Cada arquivo de teste usa um schema próprio, apagado no final, sem tocar nos seus dados. Para usar outro servidor, defina `TEST_DATABASE_URL`.
+
+### Banco de dados e migrations
+
+A conexão vem de `DATABASE_URL` no `server/.env`. Para usar um banco gerenciado na nuvem, troque esse valor pela string de conexão do provedor (em geral com `?sslmode=require`) e rode `npm run migrate`. Como proteção, o `npm run seed` só apaga um banco remoto com `npm run seed -- --forcar`.
+
+Para mudar o esquema, crie um novo arquivo numerado em `server/migrations`, como `002_nova_coluna.sql`, e rode `npm run migrate`. Cada arquivo roda uma vez, em ordem, e fica registrado na tabela `schema_migrations`. Não edite uma migration já aplicada: o comando recusa o arquivo alterado. O servidor não sobe se houver migrations pendentes.
 
 ### Modelo 3D do Golf (opcional)
 
@@ -83,7 +106,7 @@ Para usar o modelo na sua máquina:
    node client/scripts/otimizar-golf.mjs caminho/para/golf_gti_my25_lights_on.glb
    ```
 
-O script simplifica e comprime o modelo (de cerca de 18 MB para 2,3 MB), separa as peças para o clique da inspeção e grava `client/public/modelos/golf.glb`. Para rodar como em produção, gere o arquivo antes do `npm run build`.
+O script simplifica e comprime o modelo (de cerca de 18 MB para 2,3 MB), separa as peças para o clique da inspeção e grava `client/public/modelos/golf.glb`. Para rodar sem Docker como em produção, gere o arquivo antes do `npm run build`. A imagem do Docker não inclui o modelo, por causa da licença: nela, esses veículos aparecem com o carro desenhado.
 
 ## Configurando as integrações (`server/.env`)
 
@@ -147,8 +170,10 @@ Funciona sem configurar nada, dentro do limite diário gratuito. Para aumentar o
 ```
 oficinastatus/
 ├── server/
+│   ├── migrations/               # esquema do banco em arquivos SQL numerados
 │   ├── src/
-│   │   ├── db.js                 # esquema do banco (8 tabelas)
+│   │   ├── db.js                 # conexão com o PostgreSQL e transações
+│   │   ├── migrar.js             # aplica as migrations (npm run migrate)
 │   │   ├── config.js             # .env e status das integrações
 │   │   ├── app.js                # rotas e tratamento de erros
 │   │   ├── seed.js               # dados de demonstração
@@ -161,7 +186,7 @@ oficinastatus/
 │   │       ├── placa.js          # consulta por placa (PlacaFipe)
 │   │       ├── fipe.js           # API FIPE (Parallelum) com cache
 │   │       └── relatorios.js     # indicadores do painel
-│   └── test/                     # fluxo completo e vistoria pela API
+│   └── test/                     # fluxo completo, vistoria, webhook e PostgreSQL pela API
 ├── client/src/
 │   ├── acesso/                   # entrar, primeiro acesso, criar senha
 │   ├── oficina/                  # painel, quadro, OS, nova OS, cadastros, equipe, integrações
@@ -169,7 +194,9 @@ oficinastatus/
 │   ├── vistoria/                 # carro 3D, detecção da peça, painel de avarias
 │   ├── ui/                       # placa Mercosul, trilha de etapas, botões, modais, avisos
 │   └── lib/                      # API, login, formatos, etapas
-└── docs/                         # DER, fluxo de estados e telas
+├── docs/                         # DER, fluxo de estados e telas
+├── Dockerfile                    # imagem da aplicação (site + API)
+└── docker-compose.yml            # aplicação + PostgreSQL
 ```
 
 ## Banco de dados
@@ -201,5 +228,6 @@ O link público usa um código aleatório, não o número da OS. Assim, ninguém
 ## Decisões de projeto
 
 - **Regras no servidor:** a sequência das etapas e as permissões são validadas no back-end, não só na tela.
-- **Envio depois do commit:** as mensagens são gravadas na mesma transação da mudança de etapa e enviadas logo em seguida por uma fila. Se o envio falhar, a etapa não se perde, e o erro fica registrado para reenvio.
+- **Envio depois do commit:** as mensagens são gravadas na mesma transação da mudança de etapa e só entram na fila de envio depois do commit. Se a transação for desfeita, nada é enviado. Se o envio falhar, a etapa não se perde, e o erro fica registrado para reenvio.
+- **Transações em série:** uma trava do PostgreSQL (`pg_advisory_xact_lock`) faz as transações de escrita rodarem uma de cada vez. Assim, dois pedidos simultâneos não abrem duas OS para o mesmo veículo nem avançam a mesma etapa duas vezes.
 - **Front-end sem acesso direto às APIs externas:** o servidor guarda os tokens, faz cache da FIPE e padroniza os erros.

@@ -42,6 +42,12 @@ app.use((err, req, res, next) => {
   if (err instanceof HttpError) return res.status(err.status).json({ erro: err.message });
   if (err.type === 'entity.parse.failed') return res.status(400).json({ erro: 'JSON inválido.' });
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ erro: 'Cada foto pode ter no máximo 8 MB.' });
+  // Erros do PostgreSQL causados pelo dado enviado: id que não é número ou está fora do intervalo, data ou valor inválido, duplicidade
+  if (['22P02', '22003'].includes(err.code)) return req.method === 'GET'
+    ? res.status(404).json({ erro: 'Registro não encontrado.' })
+    : res.status(400).json({ erro: 'Dados inválidos.' });
+  if (['22007', '22008', '22021', '23502', '23503', '23514'].includes(err.code)) return res.status(400).json({ erro: 'Dados inválidos.' });
+  if (err.code === '23505') return res.status(409).json({ erro: 'Já existe um registro com esses dados.' });
   console.error(err);
   res.status(500).json({ erro: 'Erro interno do servidor.' });
 });

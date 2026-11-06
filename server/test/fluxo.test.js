@@ -5,10 +5,11 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { SMTPServer } = require('smtp-server');
+const { criarBancoDeTeste } = require('./apoio');
 
 const emails = [];
 const whatsapps = [];
-let smtp, externo, api, base;
+let smtp, externo, api, base, apagarBanco;
 
 function servidorExterno() {
   return http.createServer((req, res) => {
@@ -48,18 +49,19 @@ before(async () => {
   const portaExt = await ouvir(externo);
 
   Object.assign(process.env, {
-    DB_PATH: ':memory:', JWT_SECRET: 'teste', APP_URL: 'http://oficina.test', NOME_OFICINA: 'Oficina Teste',
+    JWT_SECRET: 'teste', APP_URL: 'http://oficina.test', NOME_OFICINA: 'Oficina Teste',
     SMTP_HOST: '127.0.0.1', SMTP_PORT: String(portaSmtp), SMTP_FROM: 'oficina@teste.com', SMTP_IGNORAR_TLS: 'true',
     WHATSAPP_API_URL: `http://127.0.0.1:${portaExt}`, WHATSAPP_TOKEN: 'token-meta', WHATSAPP_PHONE_NUMBER_ID: '123456', WHATSAPP_TEMPLATE: 'atualizacao_os',
     PLACA_API_URL: `http://127.0.0.1:${portaExt}`, PLACA_API_TOKEN: 'token-placa',
     FIPE_API_URL: `http://127.0.0.1:${portaExt}/fipe`,
   });
+  apagarBanco = await criarBancoDeTeste();
   const app = require('../src/app');
   api = app.listen(0);
   base = `http://127.0.0.1:${api.address().port}/api`;
 });
 
-after(() => { api?.close(); smtp?.close(); externo?.close(); });
+after(async () => { api?.close(); smtp?.close(); externo?.close(); await apagarBanco?.(); });
 
 async function chamar(metodo, rota, corpo, token) {
   const r = await fetch(base + rota, {

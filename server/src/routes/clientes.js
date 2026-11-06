@@ -19,48 +19,48 @@ function validar({ nome, telefone, email, cpf }) {
 
 const SELECT = `
   SELECT c.*, COUNT(DISTINCT v.id) AS total_veiculos,
-         u.id AS usuario_id, u.senha_hash IS NOT NULL AS tem_acesso
+         u.id AS usuario_id, (u.senha_hash IS NOT NULL)::int AS tem_acesso
     FROM clientes c
     LEFT JOIN veiculos v ON v.cliente_id = c.id
     LEFT JOIN usuarios u ON u.cliente_id = c.id`;
 
-router.get('/', rota((req, res) => {
+router.get('/', rota(async (req, res) => {
   const b = req.query.busca ? `%${req.query.busca}%` : '%';
-  res.json(db.prepare(`${SELECT} WHERE c.nome LIKE ? OR c.telefone LIKE ? OR IFNULL(c.email,'') LIKE ? GROUP BY c.id ORDER BY c.nome`).all(b, b, b));
+  res.json(await db.prepare(`${SELECT} WHERE c.nome ILIKE ? OR c.telefone ILIKE ? OR COALESCE(c.email,'') ILIKE ? GROUP BY c.id, u.id ORDER BY c.nome`).all(b, b, b));
 }));
 
-router.get('/:id', rota((req, res) => {
-  const c = db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id`).get(req.params.id);
+router.get('/:id', rota(async (req, res) => {
+  const c = await db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id, u.id`).get(req.params.id);
   if (!c) throw naoEncontrado('Cliente');
-  c.veiculos = db.prepare('SELECT * FROM veiculos WHERE cliente_id = ? ORDER BY id DESC').all(c.id);
+  c.veiculos = await db.prepare('SELECT * FROM veiculos WHERE cliente_id = ? ORDER BY id DESC').all(c.id);
   res.json(c);
 }));
 
-const salvar = db.transaction((id, d) => {
+const salvar = db.transaction(async (id, d) => {
   if (id) {
-    const r = db.prepare('UPDATE clientes SET nome = ?, telefone = ?, email = ?, cpf = ? WHERE id = ?').run(d.nome, d.telefone, d.email, d.cpf, id);
+    const r = await db.prepare('UPDATE clientes SET nome = ?, telefone = ?, email = ?, cpf = ? WHERE id = ?').run(d.nome, d.telefone, d.email, d.cpf, id);
     if (!r.changes) throw naoEncontrado('Cliente');
   } else {
-    id = db.prepare('INSERT INTO clientes (nome, telefone, email, cpf) VALUES (?, ?, ?, ?)').run(d.nome, d.telefone, d.email, d.cpf).lastInsertRowid;
+    id = (await db.prepare('INSERT INTO clientes (nome, telefone, email, cpf) VALUES (?, ?, ?, ?)').run(d.nome, d.telefone, d.email, d.cpf)).lastInsertRowid;
   }
-  auth.garantirContaCliente(id);
-  return db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id`).get(id);
+  await auth.garantirContaCliente(id);
+  return db.prepare(`${SELECT} WHERE c.id = ? GROUP BY c.id, u.id`).get(id);
 });
 
-router.post('/', rota((req, res) => res.status(201).json(salvar(null, validar(req.body)))));
-router.put('/:id', rota((req, res) => res.json(salvar(req.params.id, validar(req.body)))));
+router.post('/', rota(async (req, res) => res.status(201).json(await salvar(null, validar(req.body)))));
+router.put('/:id', rota(async (req, res) => res.json(await salvar(req.params.id, validar(req.body)))));
 
-router.delete('/:id', auth.exigir('admin'), rota((req, res) => {
-  const r = db.prepare('DELETE FROM clientes WHERE id = ?').run(req.params.id);
+router.delete('/:id', auth.exigir('admin'), rota(async (req, res) => {
+  const r = await db.prepare('DELETE FROM clientes WHERE id = ?').run(req.params.id);
   if (!r.changes) throw naoEncontrado('Cliente');
   res.status(204).end();
 }));
 
 // Gera o link para o cliente criar a senha do portal (e envia por e-mail, se configurado)
 router.post('/:id/convite', rota(async (req, res) => {
-  const conta = auth.garantirContaCliente(req.params.id);
+  const conta = await auth.garantirContaCliente(req.params.id);
   if (!conta) throw requisicaoInvalida('Cadastre um e-mail para o cliente ter acesso ao portal.');
-  const link = auth.gerarConvite(conta.id);
+  const link = await auth.gerarConvite(conta.id);
   let email_enviado = false;
   if (config.status().email.ativo) {
     email_enviado = await envio.enviarEmail({
@@ -73,7 +73,7 @@ router.post('/:id/convite', rota(async (req, res) => {
     }).then(() => true).catch(() => false);
   }
   const texto = `Olá, ${conta.nome.split(' ')[0]}! Crie sua senha para acompanhar seus veículos na ${config.oficina().nome}: ${link}`;
-  const cliente = db.prepare('SELECT telefone FROM clientes WHERE id = ?').get(req.params.id);
+  const cliente = await db.prepare('SELECT telefone FROM clientes WHERE id = ?').get(req.params.id);
   res.json({ link_convite: link, email_enviado, link_whatsapp: `https://wa.me/${envio.numeroWhats(cliente.telefone)}?text=${encodeURIComponent(texto)}` });
 }));
 

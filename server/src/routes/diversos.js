@@ -12,7 +12,7 @@ const { HttpError, rota, naoEncontrado, requisicaoInvalida, proibido, conflito }
 // ------------------------------------------------------------- mensagens
 const mensagens = express.Router();
 mensagens.use(auth.equipe);
-mensagens.get('/', rota((req, res) => {
+mensagens.get('/', rota(async (req, res) => {
   const where = [];
   const p = [];
   if (req.query.status) { where.push('m.status = ?'); p.push(req.query.status); }
@@ -20,7 +20,7 @@ mensagens.get('/', rota((req, res) => {
   if (req.query.origem === 'teste') where.push('m.ordem_id IS NULL');
   // Os testes de Integrações são só do admin
   if (req.usuario.papel === 'mecanico') { where.push('(m.ordem_id IS NOT NULL AND (o.mecanico_id IS NULL OR o.mecanico_id = ?))'); p.push(req.usuario.id); }
-  res.json(db.prepare(
+  res.json(await db.prepare(
     `SELECT m.*, c.nome AS cliente_nome, v.placa, e.tipo AS etapa_tipo
        FROM mensagens m LEFT JOIN ordens_servico o ON o.id = m.ordem_id
        LEFT JOIN veiculos v ON v.id = o.veiculo_id LEFT JOIN clientes c ON c.id = v.cliente_id
@@ -29,26 +29,26 @@ mensagens.get('/', rota((req, res) => {
   ).all(...p));
 }));
 // Envio manual pelo WhatsApp Web (quando a API da Meta não está configurada)
-mensagens.post('/:id/enviada', rota((req, res) => {
-  const r = db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = datetime('now') WHERE id = ? AND direcao = 'saida' AND link_envio IS NOT NULL").run(req.params.id);
+mensagens.post('/:id/enviada', rota(async (req, res) => {
+  const r = await db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = now() WHERE id = ? AND direcao = 'saida' AND link_envio IS NOT NULL").run(req.params.id);
   if (!r.changes) throw naoEncontrado('Mensagem');
-  res.json(db.prepare('SELECT * FROM mensagens WHERE id = ?').get(req.params.id));
+  res.json(await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(req.params.id));
 }));
 // Tenta de novo uma mensagem que falhou
 mensagens.post('/:id/reenviar', rota(async (req, res) => {
-  const m = db.prepare("SELECT * FROM mensagens WHERE id = ? AND direcao = 'saida'").get(req.params.id);
+  const m = await db.prepare("SELECT * FROM mensagens WHERE id = ? AND direcao = 'saida'").get(req.params.id);
   if (!m) throw naoEncontrado('Mensagem');
   if (m.link_envio) throw conflito('Esta mensagem é enviada manualmente pelo WhatsApp.');
   if (!m.ordem_id && req.usuario.papel !== 'admin') throw proibido();
-  db.prepare("UPDATE mensagens SET status = 'pendente', erro = NULL, erro_codigo = NULL, id_externo = NULL, status_entrega = NULL, status_entrega_em = NULL WHERE id = ?").run(m.id);
+  await db.prepare("UPDATE mensagens SET status = 'pendente', erro = NULL, erro_codigo = NULL, id_externo = NULL, status_entrega = NULL, status_entrega_em = NULL WHERE id = ?").run(m.id);
   if (!m.ordem_id) {
     await envio.despachar(m.id, extraTeste());
   } else {
-    const o = db.prepare('SELECT o.codigo_publico, c.nome FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id WHERE o.id = ?').get(m.ordem_id);
+    const o = await db.prepare('SELECT o.codigo_publico, c.nome FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id WHERE o.id = ?').get(m.ordem_id);
     const link = `${config.appUrl()}/acompanhar/${o.codigo_publico}`;
     await envio.despachar(m.id, { email: { link, titulo: m.assunto }, parametros: [o.nome.split(' ')[0], m.conteudo.split('\n')[0], link] });
   }
-  res.json(db.prepare('SELECT * FROM mensagens WHERE id = ?').get(m.id));
+  res.json(await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(m.id));
 }));
 
 // Testes de Ajustes > Integrações: ficam guardados em mensagens, sem OS, para acompanhar o status na tela Mensagens
@@ -57,9 +57,9 @@ const extraTeste = () => ({
   parametros: ['Teste', 'o envio pelo WhatsApp está funcionando.', config.appUrl()],
 });
 async function enviarTeste(canal, destinatario, assunto, conteudo) {
-  const { lastInsertRowid: id } = db.prepare("INSERT INTO mensagens (canal, direcao, destinatario, assunto, conteudo) VALUES (?, 'saida', ?, ?, ?)").run(canal, destinatario, assunto, conteudo);
+  const { lastInsertRowid: id } = await db.prepare("INSERT INTO mensagens (canal, direcao, destinatario, assunto, conteudo) VALUES (?, 'saida', ?, ?, ?)").run(canal, destinatario, assunto, conteudo);
   await envio.despachar(id, extraTeste());
-  const m = db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
+  const m = await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
   if (m.status === 'falhou') throw new HttpError(502, m.erro);
   return m;
 }
@@ -76,20 +76,20 @@ fipeR.get('/:tipo/marcas/:marca/modelos/:modelo/anos/:ano', rota(async (req, res
 // ------------------------------------------------------------- tabela de preços (catálogo de serviços)
 const catalogoR = express.Router();
 const catalogo = require('../services/catalogo');
-catalogoR.get('/', auth.equipe, rota((req, res) => res.json(catalogo.listar(req.query))));
-catalogoR.get('/categorias', auth.equipe, rota((req, res) => res.json(catalogo.contarCategorias())));
-catalogoR.put('/:id', auth.somenteAdmin, rota((req, res) => {
+catalogoR.get('/', auth.equipe, rota(async (req, res) => res.json(await catalogo.listar(req.query))));
+catalogoR.get('/categorias', auth.equipe, rota(async (req, res) => res.json(await catalogo.contarCategorias())));
+catalogoR.put('/:id', auth.somenteAdmin, rota(async (req, res) => {
   const v = Number(req.body.valor);
   const m = Number(req.body.minutos);
   if (!(v >= 0) || !(m >= 0)) throw requisicaoInvalida('Valor e tempo devem ser números positivos.');
-  const r = db.prepare('UPDATE catalogo_servicos SET valor = ?, minutos = ?, nome = COALESCE(?, nome) WHERE id = ?').run(v, Math.round(m), req.body.nome?.trim() || null, req.params.id);
+  const r = await db.prepare('UPDATE catalogo_servicos SET valor = ?, minutos = ?, nome = COALESCE(?, nome) WHERE id = ?').run(v, Math.round(m), req.body.nome?.trim() || null, req.params.id);
   if (!r.changes) throw naoEncontrado('Serviço');
-  res.json(db.prepare('SELECT * FROM catalogo_servicos WHERE id = ?').get(req.params.id));
+  res.json(await db.prepare('SELECT * FROM catalogo_servicos WHERE id = ?').get(req.params.id));
 }));
 
 // ------------------------------------------------------------- relatórios e integrações (admin)
 const admin = express.Router();
-admin.get('/relatorios/painel', auth.somenteAdmin, rota((req, res) => res.json(relatorios.painel(req.usuario, Number(req.query.meses) || 6))));
+admin.get('/relatorios/painel', auth.somenteAdmin, rota(async (req, res) => res.json(await relatorios.painel(req.usuario, parseInt(req.query.meses, 10) || 6))));
 admin.get('/integracoes', auth.equipe, rota((req, res) => res.json({ ...config.status(), app_url: config.appUrl(), oficina: config.oficina() })));
 admin.post('/integracoes/teste-email', auth.somenteAdmin, rota(async (req, res) => {
   if (!config.status().email.ativo) throw requisicaoInvalida('Configure o SMTP no .env primeiro.');
@@ -109,10 +109,10 @@ admin.post('/integracoes/teste-whatsapp', auth.somenteAdmin, rota(async (req, re
 // ------------------------------------------------------------- portal do cliente (logado)
 const portal = express.Router();
 portal.use(auth.autenticar, auth.exigir('cliente'));
-portal.get('/resumo', rota((req, res) => {
-  const cliente = db.prepare('SELECT id, nome, email, telefone FROM clientes WHERE id = ?').get(req.usuario.cliente_id);
-  const veiculos = db.prepare('SELECT id, placa, marca, modelo, ano_modelo, cor, tipo, fipe_valor, fipe_mes_referencia, quilometragem FROM veiculos WHERE cliente_id = ? ORDER BY id').all(req.usuario.cliente_id);
-  const lista = ordens.listar(req.usuario).map((o) => ({
+portal.get('/resumo', rota(async (req, res) => {
+  const cliente = await db.prepare('SELECT id, nome, email, telefone FROM clientes WHERE id = ?').get(req.usuario.cliente_id);
+  const veiculos = await db.prepare('SELECT id, placa, marca, modelo, ano_modelo, cor, tipo, fipe_valor, fipe_mes_referencia, quilometragem FROM veiculos WHERE cliente_id = ? ORDER BY id').all(req.usuario.cliente_id);
+  const lista = (await ordens.listar(req.usuario)).map((o) => ({
     id: o.id, veiculo_id: o.veiculo_id, placa: o.placa, etapa_atual: o.etapa_atual, situacao: o.situacao, aguardando_peca: o.aguardando_peca,
     problema_relatado: o.problema_relatado, total: ['recebido', 'diagnostico', 'orcamento'].includes(o.etapa_atual) ? null : o.total,
     total_aprovado: o.total_aprovado, previsao_entrega: o.previsao_entrega, criado_em: o.criado_em, atualizado_em: o.atualizado_em, entregue_em: o.entregue_em,
@@ -120,25 +120,25 @@ portal.get('/resumo', rota((req, res) => {
   }));
   res.json({ cliente, veiculos, ordens: lista, oficina: config.oficina() });
 }));
-function ordemDoCliente(req) {
-  const o = ordens.buscar(req.params.id);
+async function ordemDoCliente(req) {
+  const o = await ordens.buscar(req.params.id);
   if (o.cliente_id !== req.usuario.cliente_id) throw proibido();
   return o;
 }
-portal.get('/ordens/:id', rota((req, res) => res.json({ ...ordens.visaoCliente(ordemDoCliente(req)), oficina: config.oficina() })));
-portal.post('/ordens/:id/resposta', rota((req, res) => {
-  const o = ordemDoCliente(req);
-  ordens.responderOrcamento(o.id, { itens: req.body.itens, observacao: req.body.observacao, origem: 'cliente' }, req.usuario);
-  res.json({ ...ordens.visaoCliente(o), oficina: config.oficina() });
+portal.get('/ordens/:id', rota(async (req, res) => res.json({ ...(await ordens.visaoCliente(await ordemDoCliente(req))), oficina: config.oficina() })));
+portal.post('/ordens/:id/resposta', rota(async (req, res) => {
+  const o = await ordemDoCliente(req);
+  await ordens.responderOrcamento(o.id, { itens: req.body.itens, observacao: req.body.observacao, origem: 'cliente' }, req.usuario);
+  res.json({ ...(await ordens.visaoCliente(o)), oficina: config.oficina() });
 }));
 
 // ------------------------------------------------------------- página pública (link enviado ao cliente)
 const publico = express.Router();
-publico.get('/ordens/:codigo', rota((req, res) => res.json({ ...ordens.visaoCliente(ordens.porCodigo(req.params.codigo)), oficina: config.oficina() })));
-publico.post('/ordens/:codigo/resposta', rota((req, res) => {
-  const o = ordens.porCodigo(req.params.codigo);
-  ordens.responderOrcamento(o.id, { itens: req.body.itens, observacao: req.body.observacao, origem: 'cliente' }, null);
-  res.json({ ...ordens.visaoCliente(o), oficina: config.oficina() });
+publico.get('/ordens/:codigo', rota(async (req, res) => res.json({ ...(await ordens.visaoCliente(await ordens.porCodigo(req.params.codigo))), oficina: config.oficina() })));
+publico.post('/ordens/:codigo/resposta', rota(async (req, res) => {
+  const o = await ordens.porCodigo(req.params.codigo);
+  await ordens.responderOrcamento(o.id, { itens: req.body.itens, observacao: req.body.observacao, origem: 'cliente' }, null);
+  res.json({ ...(await ordens.visaoCliente(o)), oficina: config.oficina() });
 }));
 
 module.exports = { mensagens, fipe: fipeR, admin, portal, publico, catalogo: catalogoR };

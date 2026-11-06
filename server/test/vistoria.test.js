@@ -1,11 +1,13 @@
 // Vistoria 3D: sugestão de serviços, avarias e geração do orçamento.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const { criarBancoDeTeste } = require('./apoio');
 
-let api, base, T, osId;
+let api, base, T, osId, apagarBanco;
 
 before(async () => {
-  Object.assign(process.env, { DB_PATH: ':memory:', JWT_SECRET: 'teste', SMTP_HOST: '', WHATSAPP_TOKEN: '' });
+  Object.assign(process.env, { JWT_SECRET: 'teste', SMTP_HOST: '', WHATSAPP_TOKEN: '' });
+  apagarBanco = await criarBancoDeTeste();
   const app = require('../src/app');
   api = app.listen(0);
   base = `http://127.0.0.1:${api.address().port}/api`;
@@ -14,7 +16,7 @@ before(async () => {
   const v = (await chamar('POST', '/veiculos', { cliente_id: c.id, placa: 'ABC1D23', marca: 'VW', modelo: 'Golf' })).dados;
   osId = (await chamar('POST', '/ordens', { veiculo_id: v.id, problema_relatado: 'Batida na porta' })).dados.id;
 });
-after(() => api?.close());
+after(async () => { api?.close(); await apagarBanco?.(); });
 
 async function chamar(metodo, rota, corpo) {
   const r = await fetch(base + rota, {

@@ -31,30 +31,31 @@ function validar(b) {
 
 const SELECT = `
   SELECT v.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone,
-         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id AND o.situacao = 'aberta') AS os_aberta,
+         (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id AND o.situacao = 'aberta' ORDER BY o.id DESC LIMIT 1) AS os_aberta,
          (SELECT o.id FROM ordens_servico o WHERE o.veiculo_id = v.id ORDER BY o.id DESC LIMIT 1) AS ultima_os,
          (SELECT COUNT(*) FROM ordens_servico o WHERE o.veiculo_id = v.id) AS total_os
     FROM veiculos v JOIN clientes c ON c.id = v.cliente_id`;
 
 /** Acrescenta a etapa e a data da última OS (cartões de Veículos). */
-function comUltima(v) {
+async function comUltima(v) {
   if (!v?.ultima_os) return v;
-  const o = ordens.buscar(v.ultima_os);
+  const o = await ordens.buscar(v.ultima_os);
   return { ...v, ultima_os_etapa: o.etapa_atual, ultima_os_data: o.criado_em, ultima_os_avarias: o.qtd_avarias };
 }
 
-function traduzirErro(fn) {
-  try { return fn(); } catch (e) {
-    if (/UNIQUE.*placa/.test(e.message)) throw conflito('Já existe um veículo cadastrado com essa placa.');
-    if (/FOREIGN KEY/.test(e.message)) throw requisicaoInvalida('Cliente não encontrado.');
+async function traduzirErro(fn) {
+  try { return await fn(); } catch (e) {
+    if (e.code === '23505' && /placa/.test(e.constraint)) throw conflito('Já existe um veículo cadastrado com essa placa.');
+    if (e.code === '23503') throw requisicaoInvalida('Cliente não encontrado.');
     throw e;
   }
 }
 
-router.get('/', rota((req, res) => {
+router.get('/', rota(async (req, res) => {
   const b = req.query.busca ? `%${req.query.busca}%` : '%';
   const bp = req.query.busca ? `%${placaSvc.normalizarPlaca(req.query.busca)}%` : '%';
-  res.json(db.prepare(`${SELECT} WHERE v.placa LIKE ? OR v.modelo LIKE ? OR c.nome LIKE ? ORDER BY v.id DESC`).all(bp, b, b).map(comUltima));
+  const lista = await db.prepare(`${SELECT} WHERE v.placa ILIKE ? OR v.modelo ILIKE ? OR c.nome ILIKE ? ORDER BY v.id DESC`).all(bp, b, b);
+  res.json(await Promise.all(lista.map(comUltima)));
 }));
 
 /**
@@ -64,37 +65,37 @@ router.get('/', rota((req, res) => {
 router.get('/placa/:placa', rota(async (req, res) => {
   const placa = placaSvc.normalizarPlaca(req.params.placa);
   if (!placaSvc.PLACA.test(placa)) throw requisicaoInvalida('Placa inválida. Use o formato ABC1234 ou ABC1D23.');
-  const local = db.prepare(`${SELECT} WHERE v.placa = ?`).get(placa);
+  const local = await db.prepare(`${SELECT} WHERE v.placa = ?`).get(placa);
   if (local) return res.json({ cadastrado: local });
   res.json({ consulta: await placaSvc.consultar(placa) });
 }));
 
-router.get('/:id', rota((req, res) => {
-  const v = db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id);
+router.get('/:id', rota(async (req, res) => {
+  const v = await db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id);
   if (!v) throw naoEncontrado('Veículo');
-  v.ordens = db.prepare('SELECT id, problema_relatado, situacao, criado_em, entregue_em FROM ordens_servico WHERE veiculo_id = ? ORDER BY id DESC').all(v.id);
+  v.ordens = await db.prepare('SELECT id, problema_relatado, situacao, criado_em, entregue_em FROM ordens_servico WHERE veiculo_id = ? ORDER BY id DESC').all(v.id);
   res.json(v);
 }));
 
-const CAMPOS = 'cliente_id, placa, tipo, marca, modelo, ano_fabricacao, ano_modelo, combustivel, cor, quilometragem, fipe_codigo, fipe_ano_id, fipe_valor, fipe_mes_referencia, fipe_consultado_em, origem_dados, carroceria';
+const CAMPOS = ['cliente_id', 'placa', 'tipo', 'marca', 'modelo', 'ano_fabricacao', 'ano_modelo', 'combustivel', 'cor', 'quilometragem', 'fipe_codigo', 'fipe_ano_id', 'fipe_valor', 'fipe_mes_referencia', 'fipe_consultado_em', 'origem_dados', 'carroceria'];
 
-router.post('/', rota((req, res) => {
+router.post('/', rota(async (req, res) => {
   const d = validar(req.body);
-  const id = traduzirErro(() =>
-    db.prepare(`INSERT INTO veiculos (${CAMPOS}) VALUES (${CAMPOS.split(', ').map((c) => '@' + c).join(', ')})`).run(d).lastInsertRowid);
-  res.status(201).json(db.prepare(`${SELECT} WHERE v.id = ?`).get(id));
+  const { lastInsertRowid: id } = await traduzirErro(() =>
+    db.prepare(`INSERT INTO veiculos (${CAMPOS.join(', ')}) VALUES (${CAMPOS.map(() => '?').join(', ')})`).run(...CAMPOS.map((c) => d[c])));
+  res.status(201).json(await db.prepare(`${SELECT} WHERE v.id = ?`).get(id));
 }));
 
-router.put('/:id', rota((req, res) => {
-  const d = { ...validar(req.body), id: req.params.id };
-  const sets = CAMPOS.split(', ').map((c) => (c.startsWith('fipe_') ? `${c} = COALESCE(@${c}, ${c})` : `${c} = @${c}`)).join(', ');
-  const r = traduzirErro(() => db.prepare(`UPDATE veiculos SET ${sets} WHERE id = @id`).run(d));
+router.put('/:id', rota(async (req, res) => {
+  const d = validar(req.body);
+  const sets = CAMPOS.map((c) => (c.startsWith('fipe_') ? `${c} = COALESCE(?, ${c})` : `${c} = ?`)).join(', ');
+  const r = await traduzirErro(() => db.prepare(`UPDATE veiculos SET ${sets} WHERE id = ?`).run(...CAMPOS.map((c) => d[c]), req.params.id));
   if (!r.changes) throw naoEncontrado('Veículo');
-  res.json(db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id));
+  res.json(await db.prepare(`${SELECT} WHERE v.id = ?`).get(req.params.id));
 }));
 
-router.delete('/:id', auth.exigir('admin'), rota((req, res) => {
-  const r = db.prepare('DELETE FROM veiculos WHERE id = ?').run(req.params.id);
+router.delete('/:id', auth.exigir('admin'), rota(async (req, res) => {
+  const r = await db.prepare('DELETE FROM veiculos WHERE id = ?').run(req.params.id);
   if (!r.changes) throw naoEncontrado('Veículo');
   res.status(204).end();
 }));

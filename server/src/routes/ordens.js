@@ -25,13 +25,13 @@ const upload = multer({
 
 const d = (req) => ordens.detalhe(req.params.id, req.usuario);
 /** Executa a ação e responde com a OS atualizada. */
-const acao = (fn) => rota((req, res) => { fn(req); res.json(d(req)); });
+const acao = (fn) => rota(async (req, res) => { await fn(req); res.json(await d(req)); });
 
-router.get('/', rota((req, res) => res.json(ordens.listar(req.usuario, req.query))));
-router.get('/:id', rota((req, res) => res.json(d(req))));
-router.post('/', rota((req, res) => {
-  const id = ordens.criar(req.body, req.usuario);
-  res.status(201).json(ordens.detalhe(id, req.usuario));
+router.get('/', rota(async (req, res) => res.json(await ordens.listar(req.usuario, req.query))));
+router.get('/:id', rota(async (req, res) => res.json(await d(req))));
+router.post('/', rota(async (req, res) => {
+  const id = await ordens.criar(req.body, req.usuario);
+  res.status(201).json(await ordens.detalhe(id, req.usuario));
 }));
 
 // Etapas: recebido → diagnóstico → orçamento → aprovação → execução → pronto → entregue
@@ -48,19 +48,19 @@ router.post('/:id/entrega', acao((req) => ordens.registrarEntrega(req.params.id,
 router.post('/:id/responsavel', acao((req) => ordens.atribuir(req.params.id, req.body, req.usuario)));
 
 // Vistoria 3D
-router.get('/:id/avarias/sugestao', rota((req, res) => {
-  ordens.buscar(req.params.id, req.usuario);
-  res.json(catalogo.sugerir(req.query.zona, req.query.tipo, req.query.gravidade));
+router.get('/:id/avarias/sugestao', rota(async (req, res) => {
+  await ordens.buscar(req.params.id, req.usuario);
+  res.json(await catalogo.sugerir(req.query.zona, req.query.tipo, req.query.gravidade));
 }));
-router.post('/:id/avarias', rota((req, res) => { avarias.criar(req.params.id, req.body, req.usuario); res.status(201).json(d(req)); }));
+router.post('/:id/avarias', rota(async (req, res) => { await avarias.criar(req.params.id, req.body, req.usuario); res.status(201).json(await d(req)); }));
 router.put('/:id/avarias/:avaria', acao((req) => avarias.editar(req.params.id, req.params.avaria, req.body, req.usuario)));
 router.delete('/:id/avarias/:avaria', acao((req) => avarias.remover(req.params.id, req.params.avaria, req.usuario)));
 router.post('/:id/avarias/orcamento', acao((req) => avarias.gerarOrcamento(req.params.id, req.usuario)));
 
-router.post('/:id/fotos', upload.array('fotos', 10), rota((req, res) => {
+router.post('/:id/fotos', upload.array('fotos', 10), rota(async (req, res) => {
   if (!req.files?.length) throw requisicaoInvalida('Selecione ao menos uma foto.');
-  for (const f of req.files) ordens.adicionarFoto(req.params.id, { arquivo: f.filename, legenda: req.body.legenda, momento: req.body.momento }, req.usuario);
-  res.json(d(req));
+  for (const f of req.files) await ordens.adicionarFoto(req.params.id, { arquivo: f.filename, legenda: req.body.legenda, momento: req.body.momento }, req.usuario);
+  res.json(await d(req));
 }));
 
 module.exports = router;

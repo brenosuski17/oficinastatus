@@ -2,15 +2,11 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const fs = require('node:fs');
 const http = require('node:http');
-const os = require('node:os');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-const { DatabaseSync } = require('node:sqlite');
+const { criarBancoDeTeste } = require('./apoio');
 
 const SEGREDO = 'segredo-do-app';
-let externo, api, base, T;
+let externo, api, base, T, apagarBanco;
 let proximaResposta = null;
 
 before(async () => {
@@ -25,16 +21,17 @@ before(async () => {
   });
   await new Promise((r) => externo.listen(0, '127.0.0.1', r));
   Object.assign(process.env, {
-    DB_PATH: ':memory:', JWT_SECRET: 'teste', APP_URL: 'http://oficina.test',
+    JWT_SECRET: 'teste', APP_URL: 'http://oficina.test',
     WHATSAPP_API_URL: `http://127.0.0.1:${externo.address().port}`, WHATSAPP_TOKEN: 'token-meta', WHATSAPP_PHONE_NUMBER_ID: '123456', WHATSAPP_TEMPLATE: 'atualizacao_os',
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'token-verificacao', WHATSAPP_APP_SECRET: SEGREDO,
   });
+  apagarBanco = await criarBancoDeTeste();
   api = require('../src/app').listen(0);
   base = `http://127.0.0.1:${api.address().port}/api`;
   T = (await chamar('POST', '/auth/configurar', { nome: 'Admin', email: 'admin@teste.com', senha: 'senhaforte1' })).dados.token;
 });
 
-after(() => { api?.close(); externo?.close(); });
+after(async () => { api?.close(); externo?.close(); await apagarBanco?.(); });
 
 async function chamar(metodo, rota, corpo, token = T) {
   const r = await fetch(base + rota, {
@@ -144,41 +141,8 @@ test('mecânico não vê os testes de Integrações', async () => {
   const { dados: { usuario: mec } } = await chamar('POST', '/equipe', { nome: 'Mecânico', email: 'mec@teste.com', papel: 'mecanico' });
   const db = require('../src/db');
   const bcrypt = require('bcryptjs');
-  db.prepare('UPDATE usuarios SET senha_hash = ?, convite_token = NULL WHERE id = ?').run(bcrypt.hashSync('senhaforte1', 4), mec.id);
+  await db.prepare('UPDATE usuarios SET senha_hash = ?, convite_token = NULL WHERE id = ?').run(bcrypt.hashSync('senhaforte1', 4), mec.id);
   const { dados: login } = await chamar('POST', '/auth/login', { email: 'mec@teste.com', senha: 'senhaforte1' }, null);
   const { dados: lista } = await chamar('GET', '/mensagens', null, login.token);
   assert.deepEqual(lista, []);
-});
-
-test('banco antigo é migrado sem perder mensagens', () => {
-  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'oficina-migracao-'));
-  const arquivo = path.join(pasta, 'antigo.db');
-  try {
-    const antigo = new DatabaseSync(arquivo);
-    antigo.exec(`PRAGMA foreign_keys = OFF;
-      CREATE TABLE mensagens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ordem_id      INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
-        etapa_id INTEGER, canal TEXT NOT NULL, direcao TEXT NOT NULL, destinatario TEXT, assunto TEXT, conteudo TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente', erro TEXT, id_externo TEXT, link_envio TEXT,
-        criado_em TEXT NOT NULL DEFAULT (datetime('now')), enviada_em TEXT
-      );
-      INSERT INTO mensagens (ordem_id, canal, direcao, conteudo) VALUES (7, 'whatsapp', 'saida', 'antiga');`);
-    antigo.close();
-
-    const r = spawnSync(process.execPath, ['-e', "require('./src/db')"], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_PATH: arquivo }, encoding: 'utf8' });
-    assert.equal(r.status, 0, r.stderr);
-    // Rodar de novo não pode fazer nada
-    assert.equal(spawnSync(process.execPath, ['-e', "require('./src/db')"], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_PATH: arquivo } }).status, 0);
-
-    const novo = new DatabaseSync(arquivo);
-    const colunas = novo.prepare('PRAGMA table_info(mensagens)').all();
-    assert.equal(colunas.find((c) => c.name === 'ordem_id').notnull, 0);
-    assert.ok(colunas.some((c) => c.name === 'status_entrega'));
-    assert.equal(novo.prepare('SELECT ordem_id, conteudo FROM mensagens').get().conteudo, 'antiga');
-    assert.ok(novo.prepare("SELECT 1 FROM sqlite_master WHERE name = 'idx_mensagens_ordem'").get());
-    novo.close();
-  } finally {
-    fs.rmSync(pasta, { recursive: true, force: true });
-  }
 });

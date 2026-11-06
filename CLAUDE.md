@@ -9,14 +9,18 @@ Repositório: https://github.com/brenosuski17/oficinastatus
 
 ## Comandos
 
-Requer Node.js 22.13+ (usa o SQLite embutido, `node:sqlite`, via `server/src/sqlite.js`; não há módulo nativo para compilar).
+Requer Node.js 22.13+ e PostgreSQL (`DATABASE_URL` no `server/.env`; em desenvolvimento, o do Docker Compose em `localhost:5433`).
+A porta 5432 desta máquina é de um PostgreSQL instalado no Windows, que o projeto não usa.
 
 ```bash
 npm run instalar            # na raiz: instala raiz, server e client
-npm run seed                # recria o banco de demonstração (senha oficina123 em todas as contas)
+docker compose up -d postgres   # sobe só o banco (necessário para dev, migrate, seed e testes)
+npm run migrate             # aplica as migrations de server/migrations
+npm run seed                # apaga os dados e cria a demonstração (senha oficina123 em todas as contas)
 npm run dev                 # API em :3333 + Vite em :5173
-npm test --prefix server    # testes de integração (node:test), devem passar sempre
+npm test --prefix server    # testes de integração (node:test), devem passar sempre; usam um schema descartável
 npm run build               # build de produção do client (o server serve client/dist)
+docker compose up --build   # ambiente completo: aplicação em :3333 + PostgreSQL
 ```
 
 Contas do seed: admin@oficina.com (admin), arthur@ e rafael@oficina.com (mecânicos),
@@ -24,8 +28,11 @@ ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) 
 
 ## Estrutura
 
-- `server/src/db.js`: esquema SQLite + migrações idempotentes (ALTER/rebuild de tabela). Ao mudar o esquema, adicione
-  migração aqui; não apague o banco do usuário.
+- `server/migrations/`: esquema em arquivos SQL numerados, aplicados por `server/src/migrar.js`. Ao mudar o esquema, crie um
+  novo arquivo; nunca edite uma migration já aplicada nem apague o banco do usuário.
+- `server/src/db.js`: conexão `pg` e `await db.prepare(sql).get/all/run(...)` com `?` nos parâmetros. `db.transaction` usa a mesma
+  conexão em tudo que roda dentro dela e serializa as transações; `db.aposCommit` agenda o que depende do commit (fila de envio).
+  A API mantém os formatos do front-end: datas UTC "AAAA-MM-DD HH:MM:SS", flags 0/1 e NUMERIC/COUNT como número.
 - `server/src/services/`: regras de negócio. `ordens.js` é a máquina de estados das 7 etapas
   (recebido → diagnostico → orcamento → aprovacao → execucao → pronto → entregue); `notificacao.js` monta os avisos;
   `envio.js` envia (SMTP, WhatsApp Cloud API da Meta, fila após o commit); `avarias.js` + `catalogo.js` são a inspeção 3D
@@ -44,7 +51,7 @@ ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) 
 SMTP, WhatsApp (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE=atualizacao_os com 3 variáveis; webhook de status
 com WHATSAPP_WEBHOOK_VERIFY_TOKEN e WHATSAPP_APP_SECRET, e o túnel expõe só a porta WEBHOOK_PORT, 3334),
 PlacaFipe (PLACA_API_TOKEN), FIPE Parallelum (token opcional). Sem chave, o sistema funciona e deixa a mensagem
-pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/data/`.
+pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/data/` (o `oficina.db` antigo, do SQLite, ficou lá só como cópia).
 
 ## Próximos passos combinados
 
