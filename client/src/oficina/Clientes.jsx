@@ -66,7 +66,7 @@ export default function Clientes() {
       {dados?.length === 0 && <Vazio icone={Users} titulo={busca ? 'Ninguém encontrado' : 'Nenhum cliente ainda'} texto="Os clientes também podem ser cadastrados ao abrir uma OS." />}
 
       {dados?.length > 0 && (
-        <motion.ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" variants={lista} initial="initial" animate="animate">
+        <motion.ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" variants={lista} initial="initial" animate="animate">
           {dados.map((c) => (
             <motion.li key={c.id} variants={itemLista} className="cartao p-5 flex flex-col">
               <div className="flex items-start gap-3">

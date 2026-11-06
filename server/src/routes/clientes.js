@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const router = require('express').Router();
 const db = require('../db');
 const auth = require('../services/auth');
@@ -52,9 +54,26 @@ const salvar = db.transaction(async (id, d) => {
 router.post('/', rota(async (req, res) => res.status(201).json(await salvar(null, validar(req.body)))));
 router.put('/:id', rota(async (req, res) => res.json(await salvar(req.params.id, validar(req.body)))));
 
-router.delete('/:id', auth.exigir('admin'), rota(async (req, res) => {
-  const r = await db.prepare('DELETE FROM clientes WHERE id = ?').run(req.params.id);
+const excluir = db.transaction(async (id) => {
+  const fotos = await db.prepare(
+    `SELECT f.arquivo FROM fotos f JOIN ordens_servico o ON o.id = f.ordem_id JOIN veiculos v ON v.id = o.veiculo_id WHERE v.cliente_id = ?`
+  ).all(id);
+  const r = await db.prepare('DELETE FROM clientes WHERE id = ?').run(id);
   if (!r.changes) throw naoEncontrado('Cliente');
+  return fotos.map((f) => f.arquivo);
+});
+
+// Os arquivos só saem do disco depois do commit: se a exclusão falhar, as fotos continuam lá
+async function apagarFotos(arquivos) {
+  for (const arquivo of arquivos) {
+    await fs.promises.unlink(path.join(config.uploadsDir, path.basename(arquivo))).catch((e) => {
+      if (e.code !== 'ENOENT') console.error(`[fotos] não foi possível apagar ${arquivo}:`, e.message);
+    });
+  }
+}
+
+router.delete('/:id', auth.exigir('admin'), rota(async (req, res) => {
+  await apagarFotos(await excluir(req.params.id));
   res.status(204).end();
 }));
 

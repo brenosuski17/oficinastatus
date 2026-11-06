@@ -40,7 +40,7 @@ export default function Veiculos() {
       {dados?.length === 0 && <Vazio icone={CarFront} titulo={busca ? 'Nenhum veículo encontrado' : 'Nenhum veículo ainda'} texto="Digite a placa em Nova OS para cadastrar." />}
 
       {dados?.length > 0 && (
-        <motion.ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" variants={lista} initial="initial" animate="animate">
+        <motion.ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" variants={lista} initial="initial" animate="animate">
           {dados.map((v) => {
             const linkInspecao = v.os_aberta ? `/oficina/inspecao/${v.os_aberta}` : `/oficina/ordens/nova?placa=${v.placa}&inspecao=1`
             return (

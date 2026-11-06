@@ -27,4 +27,4 @@ Compartilhamos apenas o necessário para o sistema funcionar:
 
 ## Como pedir a exclusão dos dados
 
-Para pedir a exclusão dos seus dados, ou tirar dúvidas sobre eles, envie um e-mail para **ens-brenosuski@ugv.edu.br** informando seu nome e a placa do veículo ou o telefone cadastrado. A exclusão remove seu cadastro, seus veículos, ordens de serviço, fotos e mensagens.
+Para pedir a exclusão dos seus dados, ou tirar dúvidas sobre eles, envie um e-mail para **ens-brenosuski@ugv.edu.br** informando seu nome e a placa do veículo ou o telefone cadastrado. A exclusão remove seu cadastro, seus veículos, ordens de serviço, fotos, mensagens e o vínculo com o Telegram.

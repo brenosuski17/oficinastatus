@@ -22,7 +22,7 @@ function Dica({ active, payload, label }) {
 }
 
 const Cartao = ({ children, className = '', atraso = 0 }) => (
-  <motion.section className={`rounded-3xl border border-linha bg-superficie/80 backdrop-blur p-6 ${className}`}
+  <motion.section className={`min-w-0 rounded-3xl border border-linha bg-superficie/80 backdrop-blur p-6 ${className}`}
     initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: atraso, type: 'spring', stiffness: 220, damping: 26 }}>
     {children}
   </motion.section>
@@ -56,7 +56,7 @@ export default function Painel() {
 
       {p && (
         <>
-          <div className="grid xl:grid-cols-[1.7fr_1fr] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-4">
             <Cartao>
               <p className="text-[12px] font-bold tracking-[0.14em] text-tinta-3">FATURAMENTO DE {MESES_LONGOS[hoje.getMonth()].toUpperCase()}</p>
               <p className="text-[44px] font-extrabold tracking-[-0.03em] leading-tight mt-1"><NumeroAnimado valor={p.kpis.faturamento_mes} formatar={moeda} /></p>
@@ -107,7 +107,7 @@ export default function Painel() {
             </Cartao>
           </div>
 
-          <div className="grid xl:grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
             <Cartao atraso={0.14}>
               <div className="flex items-baseline justify-between mb-4">
                 <h2 className="text-[18px] font-bold">Pátio agora</h2>

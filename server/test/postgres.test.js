@@ -179,6 +179,35 @@ test('transação desfeita não grava nada nem dispara o que viria depois do com
   assert.equal((await db.prepare("SELECT COUNT(*) n FROM clientes WHERE nome IN ('Fica', 'Sai')").get()).n, 1);
 });
 
+test('excluir o cliente apaga as fotos dele do disco, e só as dele', async () => {
+  const config = require('../src/config');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const novaFoto = async (placa, telefone) => {
+    const v = await novoVeiculo(placa, telefone);
+    const { dados: o } = await chamar('POST', '/ordens', { veiculo_id: v.id, problema_relatado: 'Foto' });
+    const form = new FormData();
+    form.append('fotos', new Blob([png], { type: 'image/png' }), 'foto.png');
+    const r = await fetch(`${base}/ordens/${o.id}/fotos`, { method: 'POST', headers: { Authorization: `Bearer ${T}` }, body: form });
+    const { fotos } = await r.json();
+    return { clienteId: v.cliente_id, arquivo: path.join(config.uploadsDir, fotos[0].arquivo) };
+  };
+  const dele = await novaFoto('FOT1A23', '42911110005');
+  const outro = await novaFoto('FOT2A23', '42911110006');
+  try {
+    assert.ok(fs.existsSync(dele.arquivo));
+    assert.equal((await chamar('DELETE', `/clientes/${dele.clienteId}`)).status, 204);
+    assert.equal(fs.existsSync(dele.arquivo), false);
+    assert.ok(fs.existsSync(outro.arquivo));
+    // O arquivo já ter sumido não impede a exclusão, e cliente inexistente continua dando 404
+    fs.rmSync(outro.arquivo);
+    assert.equal((await chamar('DELETE', `/clientes/${outro.clienteId}`)).status, 204);
+    assert.equal((await chamar('DELETE', '/clientes/999999')).status, 404);
+  } finally {
+    fs.rmSync(dele.arquivo, { force: true });
+    fs.rmSync(outro.arquivo, { force: true });
+  }
+});
+
 test('painel de relatórios funciona com dados', async () => {
   const { status, dados } = await chamar('GET', '/relatorios/painel?meses=3');
   assert.equal(status, 200);
