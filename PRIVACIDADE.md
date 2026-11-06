@@ -1,0 +1,29 @@
+# Política de Privacidade do OficinaStatus
+
+Última atualização: 6 de novembro de 2026.
+
+O OficinaStatus é um sistema de ordens de serviço para oficinas mecânicas, desenvolvido por Breno Suski e Arthur Svidzinski como trabalho de faculdade de engenharia de software. Ele avisa o cliente sobre cada etapa do serviço no veículo e permite aprovar o orçamento pelo celular.
+
+## Dados que guardamos
+
+- **Dados do cliente:** nome, e-mail e telefone. O CPF é opcional.
+- **Dados do veículo:** placa, marca, modelo, ano, cor, combustível, quilometragem e valor de referência da tabela FIPE.
+- **Ordens de serviço:** problema relatado, diagnóstico, avarias, orçamento, respostas do cliente, etapas e datas do serviço, além das fotos do veículo.
+- **Mensagens:** conteúdo dos avisos enviados, destinatário e situação de entrega (enviada, entregue, lida ou com falha).
+- **Conta de acesso:** e-mail e senha, guardada de forma criptografada, para quem usa o portal do cliente.
+
+## Para que usamos os dados
+
+Usamos os dados para registrar o serviço na oficina e avisar o cliente sobre cada etapa, por e-mail e WhatsApp, incluindo o pedido de aprovação do orçamento. Não vendemos os dados nem os usamos para publicidade.
+
+## Com quem compartilhamos
+
+Compartilhamos apenas o necessário para o sistema funcionar:
+
+- **Meta (WhatsApp Cloud API):** telefone do cliente e conteúdo do aviso, para enviar a mensagem e informar a situação da entrega.
+- **Provedor de e-mail (SMTP):** endereço de e-mail do cliente e conteúdo do aviso.
+- **PlacaFipe:** placa do veículo, quando a oficina consulta os dados do veículo pela placa.
+
+## Como pedir a exclusão dos dados
+
+Para pedir a exclusão dos seus dados, ou tirar dúvidas sobre eles, envie um e-mail para **ens-brenosuski@ugv.edu.br** informando seu nome e a placa do veículo ou o telefone cadastrado. A exclusão remove seu cadastro, seus veículos, ordens de serviço, fotos e mensagens.
