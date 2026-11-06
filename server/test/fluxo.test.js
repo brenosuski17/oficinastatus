@@ -5,11 +5,10 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { SMTPServer } = require('smtp-server');
-const { criarBancoDeTeste } = require('./apoio');
+const { criarBancoDeTeste, servidorTelegram, TOKEN } = require('./apoio');
 
 const emails = [];
-const whatsapps = [];
-let smtp, externo, api, base, apagarBanco;
+let smtp, externo, api, base, apagarBanco, telegram;
 
 function servidorExterno() {
   return http.createServer((req, res) => {
@@ -17,12 +16,6 @@ function servidorExterno() {
     req.on('data', (c) => (corpo += c));
     req.on('end', () => {
       const json = (s, d) => { res.writeHead(s, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(d)); };
-      // Meta Cloud API
-      if (req.url === '/v21.0/123456/messages') {
-        assert.equal(req.headers.authorization, 'Bearer token-meta');
-        whatsapps.push(JSON.parse(corpo));
-        return json(200, { messages: [{ id: `wamid.${whatsapps.length}` }] });
-      }
       // PlacaFipe
       if (req.url === '/getplaca') {
         const { placa, token } = JSON.parse(corpo);
@@ -47,11 +40,12 @@ before(async () => {
   const portaSmtp = await ouvir(smtp);
   externo = servidorExterno();
   const portaExt = await ouvir(externo);
+  telegram = await servidorTelegram();
 
   Object.assign(process.env, {
     JWT_SECRET: 'teste', APP_URL: 'http://oficina.test', NOME_OFICINA: 'Oficina Teste',
     SMTP_HOST: '127.0.0.1', SMTP_PORT: String(portaSmtp), SMTP_FROM: 'oficina@teste.com', SMTP_IGNORAR_TLS: 'true',
-    WHATSAPP_API_URL: `http://127.0.0.1:${portaExt}`, WHATSAPP_TOKEN: 'token-meta', WHATSAPP_PHONE_NUMBER_ID: '123456', WHATSAPP_TEMPLATE: 'atualizacao_os',
+    TELEGRAM_API_URL: telegram.url, TELEGRAM_TOKEN: TOKEN, TELEGRAM_BOT_USERNAME: 'oficina_teste_bot', TELEGRAM_WEBHOOK_SECRET: 'segredo',
     PLACA_API_URL: `http://127.0.0.1:${portaExt}`, PLACA_API_TOKEN: 'token-placa',
     FIPE_API_URL: `http://127.0.0.1:${portaExt}/fipe`,
   });
@@ -61,7 +55,7 @@ before(async () => {
   base = `http://127.0.0.1:${api.address().port}/api`;
 });
 
-after(async () => { api?.close(); smtp?.close(); externo?.close(); await apagarBanco?.(); });
+after(async () => { api?.close(); smtp?.close(); externo?.close(); telegram?.fechar(); await apagarBanco?.(); });
 
 async function chamar(metodo, rota, corpo, token) {
   const r = await fetch(base + rota, {
@@ -72,6 +66,7 @@ async function chamar(metodo, rota, corpo, token) {
   return { status: r.status, dados: r.status === 204 ? null : await r.json() };
 }
 const esperarEnvios = () => require('../src/services/envio').ocioso();
+const avisos = () => telegram.enviadas().filter((c) => c.corpo.chat_id === '42001');
 
 test('fluxo completo de uma ordem de serviço', async () => {
   // Primeiro acesso cria o administrador
@@ -93,17 +88,27 @@ test('fluxo completo de uma ordem de serviço', async () => {
   const { dados: vei } = await chamar('POST', '/veiculos', { ...placa.dados.consulta.veiculo, cliente_id: cli.id, origem_dados: 'placa' }, T);
   assert.equal(vei.placa, 'ABC1D23');
 
-  // Abertura → e-mail com link para criar senha + WhatsApp por modelo aprovado
+  // O cliente vincula o Telegram pelo deep link
+  const { dados: vinculo } = await chamar('POST', `/clientes/${cli.id}/telegram`, {}, T);
+  assert.match(vinculo.link, /^https:\/\/t\.me\/oficina_teste_bot\?start=[0-9a-f]+$/);
+  const inicio = await fetch(base.replace('/api', '/webhook/telegram'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'segredo' },
+    body: JSON.stringify({ update_id: 1, message: { message_id: 1, chat: { id: 42001 }, from: { id: 42001, first_name: 'Maria' }, text: `/start ${new URL(vinculo.link).searchParams.get('start')}` } }),
+  });
+  assert.equal(inicio.status, 200);
+  await require('../src/services/botTelegram').ocioso();
+
+  // Abertura → e-mail com link para criar senha + aviso pelo bot
   const { dados: os } = await chamar('POST', '/ordens', { veiculo_id: vei.id, problema_relatado: 'Falha na partida', km_entrada: 50000 }, T);
   assert.equal(os.etapa_atual, 'diagnostico');
   await esperarEnvios();
   assert.equal(emails.length, 1);
   assert.deepEqual(emails[0].para, ['maria@cliente.com']);
   const convite = emails[0].dados.replace(/=\r?\n/g, '').match(/criar-senha\/([A-Za-z0-9_-]+)/)[1];
-  assert.equal(whatsapps.length, 1);
-  assert.equal(whatsapps[0].to, '5542999991234');
-  assert.equal(whatsapps[0].template.name, 'atualizacao_os');
-  assert.equal(whatsapps[0].template.components[0].parameters[0].text, 'Maria');
+  assert.equal(avisos().length, 2); // boas-vindas do vínculo + abertura da OS
+  assert.match(avisos()[1].corpo.text, /Olá, Maria!/);
+  assert.match(avisos()[1].corpo.text, /acompanhar\//);
 
   // Regras: não dá para pular etapas
   assert.equal((await chamar('POST', `/ordens/${os.id}/execucao`, {}, T)).status, 409);
@@ -141,7 +146,7 @@ test('fluxo completo de uma ordem de serviço', async () => {
   // 9 avisos (recebido, diagnóstico, orçamento, aprovado, execução, peça, retomado, pronto, entregue) em cada canal
   await esperarEnvios();
   assert.equal(emails.length, 9);
-  assert.equal(whatsapps.length, 9);
+  assert.equal(avisos().length, 10); // boas-vindas + os 9 avisos
   const { dados: msgs } = await chamar('GET', '/mensagens', null, T);
   assert.ok(msgs.filter((m) => m.direcao === 'saida').every((m) => m.status === 'enviada'));
   assert.ok(msgs.some((m) => m.direcao === 'entrada' && /1 de 2 itens aprovados/.test(m.conteudo)));

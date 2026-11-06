@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { Search, UserPlus, Pencil, Trash2, KeyRound, Users, Mail, Phone, Copy, Send } from 'lucide-react'
+import { Search, UserPlus, Pencil, Trash2, KeyRound, Users, Mail, Phone, Copy, MessageCircle } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { telefone } from '../lib/formato'
@@ -21,7 +21,7 @@ function ClienteForm({ inicial, aoSalvar }) {
     <form onSubmit={enviar} className="space-y-4">
       <Campo rotulo="Nome completo"><input className="entrada" required autoFocus value={c.nome} onChange={set('nome')} /></Campo>
       <div className="grid sm:grid-cols-2 gap-3">
-        <Campo rotulo="WhatsApp com DDD" dica="Recebe os avisos de cada etapa"><input className="entrada" type="tel" inputMode="tel" required placeholder="(42) 99999-9999" value={telefone(c.telefone)} onChange={set('telefone')} /></Campo>
+        <Campo rotulo="Telefone com DDD"><input className="entrada" type="tel" inputMode="tel" required placeholder="(42) 99999-9999" value={telefone(c.telefone)} onChange={set('telefone')} /></Campo>
         <Campo rotulo="CPF (opcional)"><input className="entrada num" inputMode="numeric" value={c.cpf || ''} onChange={set('cpf')} /></Campo>
       </div>
       <Campo rotulo="E-mail" dica="Com e-mail, o cliente recebe os avisos por e-mail e ganha acesso ao portal."><input className="entrada" type="email" value={c.email || ''} onChange={set('email')} /></Campo>
@@ -36,6 +36,7 @@ export default function Clientes() {
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState(null)
   const [convite, setConvite] = useState(null)
+  const [telegram, setTelegram] = useState(null)
   const { dados, erro, carregando, recarregar } = useDados(() => api.clientes(busca), [busca])
 
   async function excluir(c) {
@@ -44,6 +45,10 @@ export default function Clientes() {
   }
   async function convidar(c) {
     try { const r = await api.conviteCliente(c.id); setConvite({ ...r, nome: c.nome }) } catch (e) { avisar(e.message, 'erro') }
+  }
+
+  async function vincularTelegram(c) {
+    try { const r = await api.telegramCliente(c.id); setTelegram({ ...r, nome: c.nome }) } catch (e) { avisar(e.message, 'erro') }
   }
 
   return (
@@ -77,10 +82,12 @@ export default function Clientes() {
               <div className="mt-4 space-y-1.5 text-[14.5px] text-tinta-2">
                 <p className="flex items-center gap-2"><Phone className="size-4 text-tinta-3" />{telefone(c.telefone)}</p>
                 <p className="flex items-center gap-2 truncate"><Mail className="size-4 text-tinta-3 shrink-0" />{c.email || <span className="text-tinta-3">Sem e-mail</span>}</p>
+                <p className="flex items-center gap-2"><MessageCircle className="size-4 text-tinta-3" />{c.telegram_ativo ? 'Telegram vinculado' : <span className="text-tinta-3">Telegram sem vínculo</span>}</p>
               </div>
-              <div className="flex gap-1 mt-4 pt-4 border-t border-linha">
+              <div className="flex flex-wrap gap-1 mt-4 pt-4 border-t border-linha">
                 <Botao variante="fantasma" tamanho="p" icone={Pencil} onClick={() => setEditando(c)}>Editar</Botao>
                 {c.email && <Botao variante="fantasma" tamanho="p" icone={KeyRound} onClick={() => convidar(c)}>Acesso</Botao>}
+                <Botao variante="fantasma" tamanho="p" icone={MessageCircle} onClick={() => vincularTelegram(c)}>Telegram</Botao>
                 {usuario.papel === 'admin' && <Botao variante="fantasma" tamanho="p" icone={Trash2} className="ml-auto hover:!text-recusada" onClick={() => excluir(c)} aria-label={`Excluir ${c.nome}`} />}
               </div>
             </motion.li>
@@ -100,7 +107,20 @@ export default function Clientes() {
             <p className="rounded-xl bg-fundo px-4 py-3 text-[14px] break-all font-mono">{convite.link_convite}</p>
             <div className="flex flex-wrap gap-2">
               <Botao variante="secundario" icone={Copy} onClick={() => navigator.clipboard?.writeText(convite.link_convite).then(() => avisar('Link copiado.'))}>Copiar</Botao>
-              <Botao as="a" href={convite.link_whatsapp} target="_blank" rel="noreferrer" variante="whats" icone={Send}>Enviar pelo WhatsApp</Botao>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal aberto={Boolean(telegram)} aoFechar={() => setTelegram(null)} titulo="Vincular o Telegram">
+        {telegram && (
+          <div className="space-y-4">
+            {telegram.vinculado && <p className="rounded-xl bg-ok-bg text-ok px-4 py-3 font-semibold">{telegram.nome} já tem o Telegram vinculado. Um novo vínculo substitui o atual.</p>}
+            <p className="text-tinta-2">Envie este link para <strong className="text-tinta">{telegram.nome}</strong>. Ao abrir e tocar em Iniciar, o bot passa a enviar os avisos. Vale por 7 dias.</p>
+            <p className="rounded-xl bg-fundo px-4 py-3 text-[14px] break-all font-mono">{telegram.link}</p>
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" icone={Copy} onClick={() => navigator.clipboard?.writeText(telegram.link).then(() => avisar('Link copiado.'))}>Copiar</Botao>
+              <Botao as="a" href={telegram.link} target="_blank" rel="noreferrer" variante="telegram" icone={MessageCircle}>Abrir no Telegram</Botao>
             </div>
           </div>
         )}

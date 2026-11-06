@@ -9,18 +9,19 @@ O OficinaStatus é um sistema de ordens de serviço para oficinas mecânicas, de
 - **Dados do cliente:** nome, e-mail e telefone. O CPF é opcional.
 - **Dados do veículo:** placa, marca, modelo, ano, cor, combustível, quilometragem e valor de referência da tabela FIPE.
 - **Ordens de serviço:** problema relatado, diagnóstico, avarias, orçamento, respostas do cliente, etapas e datas do serviço, além das fotos do veículo.
-- **Mensagens:** conteúdo dos avisos enviados, destinatário e situação de entrega (enviada, entregue, lida ou com falha).
+- **Mensagens:** conteúdo dos avisos enviados e das mensagens recebidas pelo bot, destinatário e situação (na fila, enviada, com falha ou respondida).
+- **Telegram:** identificador da conversa e o nome informado no Telegram, para quem vincular a conta ao bot.
 - **Conta de acesso:** e-mail e senha, guardada de forma criptografada, para quem usa o portal do cliente.
 
 ## Para que usamos os dados
 
-Usamos os dados para registrar o serviço na oficina e avisar o cliente sobre cada etapa, por e-mail e WhatsApp, incluindo o pedido de aprovação do orçamento. Não vendemos os dados nem os usamos para publicidade.
+Usamos os dados para registrar o serviço na oficina e avisar o cliente sobre cada etapa, por e-mail e pelo bot do Telegram, incluindo o pedido de aprovação do orçamento. Não vendemos os dados nem os usamos para publicidade.
 
 ## Com quem compartilhamos
 
 Compartilhamos apenas o necessário para o sistema funcionar:
 
-- **Meta (WhatsApp Cloud API):** telefone do cliente e conteúdo do aviso, para enviar a mensagem e informar a situação da entrega.
+- **Telegram:** identificador da conversa com o bot e conteúdo do aviso, somente para quem vinculou o Telegram, para enviar a mensagem e receber as respostas.
 - **Provedor de e-mail (SMTP):** endereço de e-mail do cliente e conteúdo do aviso.
 - **PlacaFipe:** placa do veículo, quando a oficina consulta os dados do veículo pela placa.
 

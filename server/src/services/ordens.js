@@ -97,7 +97,7 @@ async function detalhe(id, usuario) {
     link_acompanhamento: linkAcompanhamento(o.codigo_publico),
     itens: await db.prepare('SELECT * FROM itens_orcamento WHERE ordem_id = ? ORDER BY tipo DESC, id').all(o.id),
     fotos: await db.prepare('SELECT f.*, u.nome AS enviada_por_nome FROM fotos f LEFT JOIN usuarios u ON u.id = f.enviada_por WHERE f.ordem_id = ? ORDER BY f.id').all(o.id),
-    mensagens: await db.prepare('SELECT * FROM mensagens WHERE ordem_id = ? ORDER BY id DESC').all(o.id),
+    mensagens: await db.prepare('SELECT * FROM historico_mensagens WHERE ordem_id = ? ORDER BY criada_em DESC, id DESC').all(o.id),
     avarias: await require('./avarias').listar(o.id), // require tardio: avarias.js depende deste módulo
   };
 }

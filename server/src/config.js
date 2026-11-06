@@ -33,15 +33,11 @@ const config = {
     from: env('SMTP_FROM') || env('SMTP_USER'),
     ignorarTls: env('SMTP_IGNORAR_TLS') === 'true',
   }),
-  whatsapp: () => ({
-    url: env('WHATSAPP_API_URL', 'https://graph.facebook.com').replace(/\/$/, ''),
-    token: env('WHATSAPP_TOKEN'),
-    phoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
-    versao: env('WHATSAPP_API_VERSION', 'v21.0'),
-    template: env('WHATSAPP_TEMPLATE'),
-    idioma: env('WHATSAPP_TEMPLATE_IDIOMA', 'pt_BR'),
-    webhookToken: env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
-    appSecret: env('WHATSAPP_APP_SECRET'),
+  telegram: () => ({
+    url: env('TELEGRAM_API_URL', 'https://api.telegram.org').replace(/\/$/, ''),
+    token: env('TELEGRAM_TOKEN'),
+    botUsername: env('TELEGRAM_BOT_USERNAME').replace(/^@/, ''),
+    webhookSecret: env('TELEGRAM_WEBHOOK_SECRET'),
   }),
   placa: () => ({
     url: env('PLACA_API_URL', 'https://api.placafipe.com.br').replace(/\/$/, ''),
@@ -55,14 +51,14 @@ const config = {
 
 config.status = () => {
   const s = config.smtp();
-  const w = config.whatsapp();
+  const t = config.telegram();
   return {
     email: { ativo: Boolean(s.host && s.from), detalhe: s.host ? `${s.host}:${s.port} como ${s.from}` : 'Defina SMTP_HOST, SMTP_USER, SMTP_PASS e SMTP_FROM no .env' },
-    whatsapp: {
-      ativo: Boolean(w.token && w.phoneNumberId),
-      detalhe: w.token && w.phoneNumberId
-        ? `API oficial da Meta (${w.versao})${w.template ? `, modelo "${w.template}"` : ', texto livre (janela de 24h)'}, webhook de status ${w.webhookToken && w.appSecret ? 'configurado' : 'sem configurar'}`
-        : 'Sem a API, as mensagens ficam prontas para envio com um clique pelo WhatsApp Web',
+    telegram: {
+      ativo: Boolean(t.token),
+      detalhe: t.token
+        ? `Bot ${t.botUsername ? `@${t.botUsername}` : 'sem TELEGRAM_BOT_USERNAME'}, webhook ${t.webhookSecret ? 'protegido por segredo' : 'sem TELEGRAM_WEBHOOK_SECRET'}`
+        : 'Sem o token, as mensagens ficam na fila até o bot ser configurado',
     },
     placa: { ativo: Boolean(config.placa().token), detalhe: config.placa().token ? 'PlacaFipe configurada' : 'Defina PLACA_API_TOKEN para preencher o veículo pela placa' },
     fipe: { ativo: true, detalhe: `Parallelum ${config.fipe().token ? 'com token' : 'sem token (limite diário gratuito)'}` },

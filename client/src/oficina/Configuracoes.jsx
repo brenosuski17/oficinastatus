@@ -8,7 +8,7 @@ import { useToast } from '../ui/Toast'
 
 const INTEGRACOES = [
   { chave: 'email', nome: 'E-mail (SMTP)', icone: Mail, cor: '#2b4cff', texto: 'Avisos de cada etapa e links de acesso enviados por e-mail.', variaveis: 'SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM' },
-  { chave: 'whatsapp', nome: 'WhatsApp (API da Meta)', icone: MessageCircle, cor: '#1fa855', texto: 'Envio automático pelo número oficial da oficina.', variaveis: 'WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE' },
+  { chave: 'telegram', nome: 'Telegram (bot)', icone: MessageCircle, cor: '#229ed9', texto: 'Avisos de cada etapa pelo bot, para quem vinculou o Telegram, com botões para responder ao orçamento.', variaveis: 'TELEGRAM_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET' },
   { chave: 'placa', nome: 'Consulta por placa', icone: ScanLine, cor: '#ff6a13', texto: 'Preenche marca, modelo, ano e cor ao digitar a placa (PlacaFipe).', variaveis: 'PLACA_API_TOKEN' },
   { chave: 'fipe', nome: 'Tabela FIPE', icone: Table2, cor: '#7a5af8', texto: 'Valor de referência do veículo (Parallelum).', variaveis: 'FIPE_TOKEN (opcional)' },
 ]
@@ -17,7 +17,8 @@ export default function Configuracoes() {
   const { usuario } = useAuth()
   const avisar = useToast()
   const { dados, erro, recarregar } = useDados(() => api.integracoes(), [])
-  const [teste, setTeste] = useState({ email: usuario.email, telefone: '' })
+  const [teste, setTeste] = useState({ email: usuario.email })
+  const [vinculo, setVinculo] = useState(null)
   const [enviando, setEnviando] = useState(null)
   const admin = usuario.papel === 'admin'
 
@@ -25,8 +26,12 @@ export default function Configuracoes() {
     setEnviando(tipo)
     try {
       if (tipo === 'email') { const r = await api.testeEmail(teste.email); avisar(`E-mail de teste enviado para ${r.para}. Ele fica em Mensagens > Testes.`) }
-      else { await api.testeWhatsapp(teste.telefone); avisar('Teste aceito pela Meta. Acompanhe a entrega em Mensagens > Testes.') }
+      else { await api.testeTelegram(); avisar('Teste enviado pelo Telegram. Ele fica em Mensagens > Testes.') }
     } catch (e) { avisar(`${e.message} O teste fica em Mensagens > Testes.`, 'erro') } finally { setEnviando(null) }
+  }
+
+  async function vincular() {
+    try { setVinculo((await api.vinculoTelegram()).link) } catch (e) { avisar(e.message, 'erro') }
   }
 
   return (
@@ -61,10 +66,12 @@ export default function Configuracoes() {
                       <Botao variante="secundario" icone={Send} carregando={enviando === 'email'} onClick={() => testar('email')}>Testar</Botao>
                     </div>
                   )}
-                  {admin && i.chave === 'whatsapp' && st.ativo && (
-                    <div className="flex gap-2 mt-5">
-                      <input className="entrada" type="tel" placeholder="(42) 99999-9999" value={teste.telefone} onChange={(e) => setTeste({ ...teste, telefone: e.target.value })} aria-label="Número para teste" />
-                      <Botao variante="secundario" icone={Send} carregando={enviando === 'whatsapp'} onClick={() => testar('whatsapp')}>Testar</Botao>
+                  {admin && i.chave === 'telegram' && st.ativo && (
+                    <div className="flex flex-wrap gap-2 mt-5">
+                      {vinculo
+                        ? <Botao as="a" href={vinculo} target="_blank" rel="noreferrer" variante="telegram" icone={MessageCircle}>Abrir o bot</Botao>
+                        : <Botao variante="secundario" icone={MessageCircle} onClick={vincular}>{dados.meu_telegram ? 'Vincular de novo' : 'Vincular meu Telegram'}</Botao>}
+                      <Botao variante="secundario" icone={Send} carregando={enviando === 'telegram'} onClick={() => testar('telegram')}>Testar</Botao>
                     </div>
                   )}
                 </motion.section>

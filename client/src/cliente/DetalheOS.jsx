@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Package, Wrench, ThumbsUp, ThumbsDown, PackageSearch, MessageCircle, Phone, Check, X, CalendarClock } from 'lucide-react'
+import { Package, Wrench, ThumbsUp, ThumbsDown, PackageSearch, Phone, Check, X, CalendarClock } from 'lucide-react'
 import { ESTADOS } from '../lib/etapas'
 import { dataHora, dia, moeda, nomeVeiculo, telefone } from '../lib/formato'
 import { Botao, Modal, Placa } from '../ui/base'
@@ -182,7 +182,6 @@ export default function DetalheOS({ o, aoResponder }) {
             <p className="font-bold">{o.oficina.nome}</p>
             {o.oficina.endereco && <p className="text-[14px] text-tinta-3">{o.oficina.endereco}</p>}
           </div>
-          <Botao as="a" href={`https://wa.me/55${tel}`} target="_blank" rel="noreferrer" variante="whats" icone={MessageCircle}>WhatsApp</Botao>
           <Botao as="a" href={`tel:+55${tel}`} variante="secundario" icone={Phone}>{telefone(tel)}</Botao>
         </section>
       )}

@@ -1,7 +1,7 @@
 # OficinaStatus
 
 Trabalho de faculdade (engenharia de software) de Breno Suski e Arthur Svidzinski: sistema de ordens de serviço
-para oficina mecânica em que o cliente é avisado a cada etapa (e-mail + WhatsApp) e aprova o orçamento pelo celular.
+para oficina mecânica em que o cliente é avisado a cada etapa (e-mail + bot do Telegram) e aprova o orçamento pelo celular.
 Requisitos do trabalho: entidades mínimas `clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`;
 segunda API obrigatória: FIPE (Parallelum). Textos da interface e do código em português do Brasil.
 
@@ -17,6 +17,7 @@ npm run instalar            # na raiz: instala raiz, server e client
 docker compose up -d postgres   # sobe só o banco (necessário para dev, migrate, seed e testes)
 npm run migrate             # aplica as migrations de server/migrations
 npm run seed                # apaga os dados e cria a demonstração (senha oficina123 em todas as contas)
+npm run webhook             # sobe o cloudflared e registra a URL no Telegram (com npm run dev rodando)
 npm run dev                 # API em :3333 + Vite em :5173
 npm test --prefix server    # testes de integração (node:test), devem passar sempre; usam um schema descartável
 npm run build               # build de produção do client (o server serve client/dist)
@@ -35,7 +36,8 @@ ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) 
   A API mantém os formatos do front-end: datas UTC "AAAA-MM-DD HH:MM:SS", flags 0/1 e NUMERIC/COUNT como número.
 - `server/src/services/`: regras de negócio. `ordens.js` é a máquina de estados das 7 etapas
   (recebido → diagnostico → orcamento → aprovacao → execucao → pronto → entregue); `notificacao.js` monta os avisos;
-  `envio.js` envia (SMTP, WhatsApp Cloud API da Meta, fila após o commit); `avarias.js` + `catalogo.js` são a inspeção 3D
+  `envio.js` envia (SMTP, Telegram, fila após o commit, backoff no 429); `telegram.js` é o cliente da Bot API, `botTelegram.js` trata o
+  webhook (/start, mensagens, botões) e `canais.js` faz o vínculo; `avarias.js` + `catalogo.js` são a inspeção 3D
   e a tabela de preços; `relatorios.js` alimenta a Visão geral.
 - `server/src/routes/`: rotas Express finas que chamam os services.
 - `client/src/oficina/`: área da equipe (tema escuro, classe `.tema-escuro` no Layout).
@@ -48,14 +50,16 @@ ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) 
 
 ## Integrações (server/.env, ver .env.example e README)
 
-SMTP, WhatsApp (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE=atualizacao_os com 3 variáveis; webhook de status
-com WHATSAPP_WEBHOOK_VERIFY_TOKEN e WHATSAPP_APP_SECRET, e o túnel expõe só a porta WEBHOOK_PORT, 3334),
-PlacaFipe (PLACA_API_TOKEN), FIPE Parallelum (token opcional). Sem chave, o sistema funciona e deixa a mensagem
-pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/data/` (o `oficina.db` antigo, do SQLite, ficou lá só como cópia).
+SMTP, Telegram (TELEGRAM_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET; webhook em POST /webhook/telegram, e o túnel
+expõe só a porta WEBHOOK_PORT, 3334),
+PlacaFipe (PLACA_API_TOKEN), FIPE Parallelum (token opcional). Sem token, o sistema funciona e deixa a mensagem na fila;
+cliente sem vínculo fica com `falha` e o motivo.
+`mensagens` e `canais_usuario` seguem os nomes do Anexo A.5 do documento do projeto (a correção procura por eles): não renomeie.
+E-mails e registros do sistema ficam em `comunicacoes`, e a view `historico_mensagens` junta tudo para as telas. Nunca commitar `.env` nem `server/data/` (o `oficina.db` antigo, do SQLite, ficou lá só como cópia).
 
 ## Próximos passos combinados
 
-- Configurar o WhatsApp real da Meta (o Breno vai criar o app e passar as chaves).
+- Criar o bot real no @BotFather e preencher o `.env` (o Breno vai fazer).
 - Trocar os carros procedurais de sedã, SUV e picape por modelos .glb reais (Sketchfab/Poly Haven, licença CC0/CC BY, crédito
   ao autor), como já feito nos hatches da Volkswagen: `client/scripts/otimizar-golf.mjs` gera o .glb e `MODELOS` em
   `carrocerias.js` guarda marcas, medidas e crédito. Manter cor do veículo, clique por peça e marcações de avaria. Preferir

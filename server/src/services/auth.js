@@ -75,7 +75,7 @@ async function garantirContaCliente(clienteId) {
   if (!c?.email) return null;
   const u = await db.prepare('SELECT * FROM usuarios WHERE cliente_id = ?').get(clienteId);
   if (u) {
-    if (u.email.toLowerCase() !== c.email.toLowerCase() || u.nome !== c.nome)
+    if ((u.email || '').toLowerCase() !== c.email.toLowerCase() || u.nome !== c.nome)
       await db.prepare('UPDATE usuarios SET email = ?, nome = ? WHERE id = ?').run(c.email, c.nome, u.id);
     return db.prepare('SELECT * FROM usuarios WHERE id = ?').get(u.id);
   }
@@ -84,6 +84,18 @@ async function garantirContaCliente(clienteId) {
   const { lastInsertRowid } = await db
     .prepare("INSERT INTO usuarios (nome, email, papel, cliente_id) VALUES (?, ?, 'cliente', ?)")
     .run(c.nome, c.email, clienteId);
+  return db.prepare('SELECT * FROM usuarios WHERE id = ?').get(lastInsertRowid);
+}
+
+/** Usuário do cliente para o vínculo com o bot. Quem não tem e-mail ganha um usuário sem acesso ao portal. */
+async function garantirUsuarioDoCliente(clienteId) {
+  const conta = await garantirContaCliente(clienteId);
+  if (conta) return conta;
+  const u = await db.prepare('SELECT * FROM usuarios WHERE cliente_id = ?').get(clienteId);
+  if (u) return u;
+  const c = await db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
+  if (!c) throw naoEncontrado('Cliente');
+  const { lastInsertRowid } = await db.prepare("INSERT INTO usuarios (nome, papel, cliente_id) VALUES (?, 'cliente', ?)").run(c.nome, clienteId);
   return db.prepare('SELECT * FROM usuarios WHERE id = ?').get(lastInsertRowid);
 }
 
@@ -116,5 +128,5 @@ const somenteAdmin = [autenticar, exigir('admin')];
 
 module.exports = {
   publico, login, configurar, precisaConfigurar, gerarConvite, lerConvite, definirSenha,
-  garantirContaCliente, validarSenha, autenticar, exigir, equipe, somenteAdmin,
+  garantirContaCliente, garantirUsuarioDoCliente, validarSenha, autenticar, exigir, equipe, somenteAdmin,
 };

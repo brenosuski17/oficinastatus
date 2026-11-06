@@ -305,7 +305,7 @@ export default function Ordem() {
               <section className="cartao p-6"><h2 className="font-bold text-[17px] mb-5">Linha do tempo</h2><LinhaDoTempo etapas={o.etapas} /></section>
               <section className="cartao p-6">
                 <h2 className="font-bold text-[17px] mb-4">Mensagens ({o.mensagens.length})</h2>
-                <ul className="space-y-3">{o.mensagens.map((m) => <Mensagem key={m.id} m={m} aoMudar={recarregar} />)}</ul>
+                <ul className="space-y-3">{o.mensagens.map((m) => <Mensagem key={`${m.canal}-${m.id}`} m={m} aoMudar={recarregar} />)}</ul>
               </section>
             </div>
           )}

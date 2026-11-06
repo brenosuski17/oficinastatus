@@ -1,11 +1,33 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { ChevronRight, ThumbsUp, CarFront, History } from 'lucide-react'
+import { ChevronRight, ThumbsUp, CarFront, History, MessageCircle } from 'lucide-react'
 import { api } from '../lib/api'
 import { ESTADOS } from '../lib/etapas'
 import { dataCurta, moeda, nomeVeiculo, primeiroNome, tempoDesde } from '../lib/formato'
-import { ErroCarga, Esqueleto, Placa, Selo, Vazio, useDados, lista, itemLista } from '../ui/base'
+import { Botao, ErroCarga, Esqueleto, Placa, Selo, Vazio, useDados, lista, itemLista } from '../ui/base'
+import { useToast } from '../ui/Toast'
 import { MiniTrilha } from '../ui/Trilha'
+
+/** Botão para o cliente vincular o Telegram e receber os avisos pelo bot. */
+function VinculoTelegram({ vinculado }) {
+  const avisar = useToast()
+  const [link, setLink] = useState(null)
+  async function gerar() {
+    try { setLink((await api.portal.telegram()).link) } catch (e) { avisar(e.message, 'erro') }
+  }
+  return (
+    <section className="cartao p-5 mb-6 flex flex-wrap items-center gap-3">
+      <div className="flex-1 min-w-[200px]">
+        <p className="font-bold">{vinculado ? 'Telegram vinculado' : 'Receba os avisos no Telegram'}</p>
+        <p className="text-[14px] text-tinta-3">{vinculado ? 'Você recebe cada etapa e aprova o orçamento pelo bot.' : 'Acompanhe cada etapa e aprove o orçamento pelo bot.'}</p>
+      </div>
+      {link
+        ? <Botao as="a" href={link} target="_blank" rel="noreferrer" variante="telegram" icone={MessageCircle}>Abrir o bot e tocar em Iniciar</Botao>
+        : <Botao variante={vinculado ? 'secundario' : 'telegram'} icone={MessageCircle} onClick={gerar}>{vinculado ? 'Vincular outra conta' : 'Vincular Telegram'}</Botao>}
+    </section>
+  )
+}
 
 export default function InicioCliente() {
   const { dados: d, erro, recarregar } = useDados(() => api.portal.resumo(), [])
@@ -20,6 +42,8 @@ export default function InicioCliente() {
     <>
       <h1 className="text-[30px] font-extrabold tracking-[-0.02em]">Olá, {primeiroNome(d.cliente.nome)}</h1>
       <p className="text-tinta-2 mt-1 mb-6">{abertas.length ? `Você tem ${abertas.length} ${abertas.length === 1 ? 'veículo' : 'veículos'} na ${d.oficina.nome}.` : `Nenhum veículo na ${d.oficina.nome} agora.`}</p>
+
+      {d.telegram?.disponivel && <VinculoTelegram vinculado={d.telegram.vinculado} />}
 
       <motion.ul className="space-y-4" variants={lista} initial="initial" animate="animate">
         {abertas.map((o) => {

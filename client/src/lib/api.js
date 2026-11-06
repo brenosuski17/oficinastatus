@@ -53,7 +53,8 @@ export const api = {
   painel: (meses) => get('/relatorios/painel', { meses }),
   integracoes: () => get('/integracoes'),
   testeEmail: (para) => post('/integracoes/teste-email', { para }),
-  testeWhatsapp: (telefone) => post('/integracoes/teste-whatsapp', { telefone }),
+  testeTelegram: () => post('/integracoes/teste-telegram'),
+  vinculoTelegram: () => post('/integracoes/telegram/vinculo'),
 
   ordens: (f) => get('/ordens', f),
   ordem: (id) => get(`/ordens/${id}`),
@@ -86,6 +87,7 @@ export const api = {
   salvarCliente: (d) => (d.id ? req('PUT', `/clientes/${d.id}`, d) : post('/clientes', d)),
   excluirCliente: (id) => req('DELETE', `/clientes/${id}`),
   conviteCliente: (id) => post(`/clientes/${id}/convite`),
+  telegramCliente: (id) => post(`/clientes/${id}/telegram`),
 
   veiculos: (busca) => get('/veiculos', { busca }),
   veiculoPorPlaca: (placa) => get(`/veiculos/placa/${encodeURIComponent(placa)}`),
@@ -93,8 +95,7 @@ export const api = {
   excluirVeiculo: (id) => req('DELETE', `/veiculos/${id}`),
 
   mensagens: (f) => get('/mensagens', f),
-  marcarEnviada: (id) => post(`/mensagens/${id}/enviada`),
-  reenviar: (id) => post(`/mensagens/${id}/reenviar`),
+  reenviar: (canal, id) => post(`/mensagens/${canal}/${id}/reenviar`),
 
   equipe: () => get('/equipe'),
   mecanicos: () => get('/equipe/mecanicos'),
@@ -113,6 +114,7 @@ export const api = {
     resumo: () => get('/portal/resumo'),
     ordem: (id) => get(`/portal/ordens/${id}`),
     responder: (id, d) => post(`/portal/ordens/${id}/resposta`, d),
+    telegram: () => post('/portal/telegram'),
   },
   publico: {
     ordem: (c) => get(`/publico/ordens/${c}`),

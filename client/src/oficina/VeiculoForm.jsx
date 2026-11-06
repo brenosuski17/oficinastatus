@@ -34,7 +34,7 @@ export function ClienteCampo({ valor, aoMudar }) {
           <p className="font-bold mb-3">Novo cliente</p>
           <div className="grid sm:grid-cols-3 gap-3">
             <Campo rotulo="Nome completo"><input className="entrada" autoFocus value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Campo>
-            <Campo rotulo="WhatsApp com DDD"><input className="entrada" type="tel" inputMode="tel" placeholder="(42) 99999-9999" value={novo.telefone} onChange={(e) => setNovo({ ...novo, telefone: e.target.value })} /></Campo>
+            <Campo rotulo="Telefone com DDD"><input className="entrada" type="tel" inputMode="tel" placeholder="(42) 99999-9999" value={novo.telefone} onChange={(e) => setNovo({ ...novo, telefone: e.target.value })} /></Campo>
             <Campo rotulo="E-mail" dica="Para avisos e acesso ao portal"><input className="entrada" type="email" value={novo.email} onChange={(e) => setNovo({ ...novo, email: e.target.value })} /></Campo>
           </div>
           <div className="flex gap-2 mt-4">

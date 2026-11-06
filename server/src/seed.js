@@ -1,7 +1,7 @@
 // Dados de demonstração para a apresentação: `npm run seed`
 // ATENÇÃO: apaga todos os dados do banco. Nenhuma mensagem é enviada durante o seed.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), quiet: true });
-for (const k of ['SMTP_HOST', 'WHATSAPP_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID']) process.env[k] = '';
+for (const k of ['SMTP_HOST', 'TELEGRAM_TOKEN']) process.env[k] = '';
 
 const bcrypt = require('bcryptjs');
 const db = require('./db');
@@ -20,7 +20,7 @@ function exigirBancoLocal() {
 const SENHA = 'oficina123';
 
 const popular = db.transaction(async () => {
-  await db.exec(`TRUNCATE mensagens, fotos, avaria_servicos, avarias, itens_orcamento, etapas, ordens_servico,
+  await db.exec(`TRUNCATE mensagens, comunicacoes, canais_usuario, convites_canal, updates_telegram, fotos, avaria_servicos, avarias, itens_orcamento, etapas, ordens_servico,
                           veiculos, usuarios, clientes, catalogo_servicos RESTART IDENTITY CASCADE`);
 
   // tabela de preços volta ao padrão
@@ -47,11 +47,14 @@ const popular = db.transaction(async () => {
     ['Luciana Farias', '42999550005', 'luciana@cliente.com', 'HBX7J82', 'Hyundai', 'HB20 Comfort 1.0 Flex 12V', 2019, 'Azul', 72500],
     ['Carlos Eduardo Nunes', '42999660006', null, 'KLM3A45', 'Renault', 'Kwid Zen 1.0 Flex 12V 5p', 2023, 'Branco', 18900],
   ];
+  // Vínculo de demonstração: o Telegram recusa estes chat_id, que não são de ninguém
+  const vincular = (usuarioId, nome) => db.prepare("INSERT INTO canais_usuario (usuario_id, plataforma, chat_id, codigo_convite) VALUES (?, 'telegram', ?, 'demonstracao')")
+    .run(usuarioId, `demo-${nome.split(' ')[0].toLowerCase()}`);
   const CARROCERIA = { MTZ4C21: 'picape', RTY5F67: 'sedan' };
   const V = [];
   for (const [nome, tel, email, placa, marca, modelo, ano, cor, km] of C) {
     const { lastInsertRowid: cid } = await cliente.run(nome, tel, email);
-    if (email) await usuario.run(nome, email, hash, 'cliente', cid); // clientes de demonstração já com senha
+    if (email) await vincular((await usuario.run(nome, email, hash, 'cliente', cid)).lastInsertRowid, nome); // clientes de demonstração já com senha
     const { lastInsertRowid: id } = await veiculo.run(cid, placa, marca, modelo, ano, ano, cor, km);
     await db.prepare('UPDATE veiculos SET carroceria = ? WHERE id = ?').run(CARROCERIA[placa] || 'hatch', id);
     V.push(id);
@@ -126,7 +129,7 @@ const popular = db.transaction(async () => {
 
   // OS com vistoria 3D: batida leve, orçamento gerado pelas avarias e aguardando o cliente
   const { lastInsertRowid: cidF } = await cliente.run('Fernanda Costa', '42999770007', 'fernanda@cliente.com');
-  await usuario.run('Fernanda Costa', 'fernanda@cliente.com', hash, 'cliente', cidF);
+  await vincular((await usuario.run('Fernanda Costa', 'fernanda@cliente.com', hash, 'cliente', cidF)).lastInsertRowid, 'Fernanda Costa');
   const { lastInsertRowid: vF } = await veiculo.run(cidF, 'FRN7C30', 'VW - VolksWagen', 'Polo Track 1.0 Flex 12V 5p', 2023, 2023, 'Azul', 22100);
   await db.prepare("UPDATE veiculos SET fipe_codigo = '005569-0', fipe_valor = 'R$ 81.200,00', fipe_mes_referencia = 'novembro de 2026', origem_dados = 'fipe' WHERE id = ?").run(vF);
   const o6 = await ordens.criar({ veiculo_id: vF, problema_relatado: 'Batida leve no estacionamento, lado direito e frente.', km_entrada: 22140, mecanico_id: mecA }, admin);
@@ -141,7 +144,11 @@ const popular = db.transaction(async () => {
   await avarias.gerarOrcamento(o6, mecanicoA);
   await ordens.enviarOrcamento(o6, { previsao_entrega: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) }, admin);
 
-  await db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = criado_em WHERE direcao = 'saida' AND ordem_id NOT IN (?, ?)").run(o2, o3);
+  // Os avisos da demonstração aparecem como enviados, menos os das OS o2 e o3, que ficam na fila; quem não tem vínculo fica com a falha registrada
+  await db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = criada_em, id_externo = id::text WHERE status = 'enfileirada' AND ordem_id NOT IN (?, ?)").run(o2, o3);
+  await db.exec(`UPDATE mensagens m SET status = 'respondida', respondida_em = m.criada_em
+                  WHERE m.reply_markup IS NOT NULL AND m.status = 'enviada'
+                    AND EXISTS (SELECT 1 FROM etapas e WHERE e.ordem_id = m.ordem_id AND e.tipo = 'aprovacao' AND e.status IN ('concluida','recusada'))`);
 });
 
 async function principal() {

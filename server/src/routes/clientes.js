@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const auth = require('../services/auth');
 const envio = require('../services/envio');
+const canais = require('../services/canais');
 const config = require('../config');
 const { naoEncontrado, requisicaoInvalida, rota } = require('../errors');
 
@@ -10,7 +11,7 @@ router.use(auth.equipe);
 function validar({ nome, telefone, email, cpf }) {
   if (!nome?.trim()) throw requisicaoInvalida('Informe o nome do cliente.');
   const tel = String(telefone || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
-  if (tel.length < 10 || tel.length > 11) throw requisicaoInvalida('Informe o WhatsApp com DDD, ex.: (42) 99999-9999.');
+  if (tel.length < 10 || tel.length > 11) throw requisicaoInvalida('Informe o telefone com DDD, ex.: (42) 99999-9999.');
   if (email && !/^\S+@\S+\.\S+$/.test(email)) throw requisicaoInvalida('E-mail inválido.');
   const c = String(cpf || '').replace(/\D/g, '');
   if (c && c.length !== 11) throw requisicaoInvalida('CPF deve ter 11 dígitos.');
@@ -19,7 +20,8 @@ function validar({ nome, telefone, email, cpf }) {
 
 const SELECT = `
   SELECT c.*, COUNT(DISTINCT v.id) AS total_veiculos,
-         u.id AS usuario_id, (u.senha_hash IS NOT NULL)::int AS tem_acesso
+         u.id AS usuario_id, (u.senha_hash IS NOT NULL)::int AS tem_acesso,
+         EXISTS (SELECT 1 FROM canais_usuario cu WHERE cu.usuario_id = u.id AND cu.ativo)::int AS telegram_ativo
     FROM clientes c
     LEFT JOIN veiculos v ON v.cliente_id = c.id
     LEFT JOIN usuarios u ON u.cliente_id = c.id`;
@@ -72,9 +74,13 @@ router.post('/:id/convite', rota(async (req, res) => {
       botao: 'Criar minha senha',
     }).then(() => true).catch(() => false);
   }
-  const texto = `Olá, ${conta.nome.split(' ')[0]}! Crie sua senha para acompanhar seus veículos na ${config.oficina().nome}: ${link}`;
-  const cliente = await db.prepare('SELECT telefone FROM clientes WHERE id = ?').get(req.params.id);
-  res.json({ link_convite: link, email_enviado, link_whatsapp: `https://wa.me/${envio.numeroWhats(cliente.telefone)}?text=${encodeURIComponent(texto)}` });
+  res.json({ link_convite: link, email_enviado });
+}));
+
+// Link do bot para o cliente vincular o Telegram
+router.post('/:id/telegram', rota(async (req, res) => {
+  const u = await db.transaction(() => auth.garantirUsuarioDoCliente(req.params.id))();
+  res.json({ link: await canais.gerarLink(u.id), vinculado: Boolean(await canais.ativoDoUsuario(u.id)) });
 }));
 
 module.exports = router;

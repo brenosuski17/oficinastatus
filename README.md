@@ -3,7 +3,7 @@
 Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 
 **Problema:** os clientes ligam várias vezes para saber do carro.
-**Solução:** cada ordem de serviço (OS) passa por 7 etapas, e cada mudança avisa o cliente por e-mail e WhatsApp. O cliente acompanha tudo pelo celular e aprova o orçamento item por item, sem precisar ligar.
+**Solução:** cada ordem de serviço (OS) passa por 7 etapas, e cada mudança avisa o cliente por e-mail e pelo bot do Telegram. O cliente acompanha tudo pelo celular e aprova o orçamento item por item, sem precisar ligar.
 
 **Alunos:** Arthur Svidzinski e Breno Suski
 
@@ -29,7 +29,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 - **Orçamento por itens**, com peças e mão de obra separadas.
 - **Mecânico responsável:** cada mecânico vê só as OS dele e as que ainda não têm responsável.
 - **Fotos** da entrada, do diagnóstico, da execução e da entrega, tiradas direto pelo celular.
-- **Mensagens:** cada envio fica registrado com o status real (enviada, falhou com o motivo, ou aguardando envio manual), com opção de tentar de novo.
+- **Mensagens:** cada envio e cada resposta ficam registrados com o status real (na fila, enviada, falha com o motivo ou respondida), com opção de tentar de novo.
 - **Equipe e integrações:** convite de mecânicos por link e uma tela com o status de cada serviço externo, com botão de teste.
 
 **Área do cliente**
@@ -45,7 +45,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 | Banco de dados | PostgreSQL 17, com migrations versionadas em `server/migrations` |
 | Ambiente | Docker Compose (aplicação + PostgreSQL) |
 | Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide, Three.js + React Three Fiber (vistoria 3D) |
-| APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · WhatsApp Cloud API (Meta) |
+| APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · [Telegram Bot API](https://core.telegram.org/bots/api) |
 | Testes | `node:test`, com servidores SMTP e HTTP locais que recebem as mesmas requisições que os serviços reais e um schema descartável do PostgreSQL |
 
 ## Como rodar
@@ -126,38 +126,30 @@ O sistema funciona sem nenhuma integração, mas cada uma liga uma parte real do
 
 Com o e-mail ativo, o cliente recebe um aviso a cada etapa. O primeiro aviso já traz o link para ele criar a senha do portal.
 
-### WhatsApp (API oficial da Meta)
-1. Em [developers.facebook.com](https://developers.facebook.com), crie um app do tipo *Business* e adicione o produto **WhatsApp**.
-2. Em *WhatsApp → API Setup*, copie o **token** e o **Phone number ID**. No modo de teste, cadastre ali os números que vão receber as mensagens.
-3. Mensagens iniciadas pela empresa precisam de um **modelo aprovado**. No WhatsApp Manager, crie um modelo da categoria *Utilidade*, em português, chamado `atualizacao_os`, com o corpo:
-   ```
-   Olá, {{1}}! Atualização do seu veículo: {{2}} Acompanhe por aqui: {{3}}
-   ```
-4. Preencha o `.env`:
-   ```
-   WHATSAPP_TOKEN=...
-   WHATSAPP_PHONE_NUMBER_ID=...
-   WHATSAPP_TEMPLATE=atualizacao_os
-   ```
+### Telegram (bot)
+O bot avisa o cliente a cada etapa e pede a aprovação do orçamento com os botões **Aprovar** e **Recusar**. Sem o token, o sistema continua funcionando e as mensagens ficam na fila até o bot ser configurado.
 
-Enquanto o WhatsApp não estiver configurado, cada aviso fica na tela **Mensagens** com o botão "Enviar pelo WhatsApp". Ele abre o WhatsApp Web com o texto pronto para o número do cliente.
-
-#### Webhook de status
-A Meta responde "aceita" ao pedido de envio e só depois avisa, pelo webhook, se a mensagem foi enviada, entregue, lida ou se falhou (com código e descrição do erro). A tela **Mensagens** mostra esse resultado, inclusive o dos testes de **Ajustes > Integrações** (aba **Testes**).
-
-1. Preencha no `.env`:
+1. No Telegram, abra o [@BotFather](https://t.me/BotFather), envie `/newbot` e siga as instruções. Ele devolve o **token** e o **nome** do bot, que termina em `bot`.
+2. Preencha o `.env`. O segredo é um texto longo que você inventa (só A-Z, a-z, 0-9, `_` e `-`):
    ```
-   WHATSAPP_WEBHOOK_VERIFY_TOKEN=um texto longo que você inventa
-   WHATSAPP_APP_SECRET=chave secreta do app (Configurações do app > Básico)
+   TELEGRAM_TOKEN=...
+   TELEGRAM_BOT_USERNAME=nome_do_seu_bot
+   TELEGRAM_WEBHOOK_SECRET=...
    ```
-   e reinicie o servidor. Sem a chave secreta, os avisos são recusados.
-2. Em desenvolvimento, exponha só a porta do webhook. O endereço muda a cada execução do túnel, e o cadastro na Meta precisa ser refeito:
+3. Com o servidor no ar (`npm run dev`), em outro terminal:
    ```bash
-   cloudflared tunnel --url http://localhost:3334
+   npm run webhook
    ```
-3. No painel da Meta, em *WhatsApp → Configuração → Webhook*, informe a URL `https://<endereço-do-túnel>/api/webhooks/whatsapp` e o token de verificação. Depois, assine o campo **messages**.
+   O comando sobe um túnel do [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) e registra a URL no Telegram com `setWebhook`. O túnel expõe só a porta `WEBHOOK_PORT` (3334), que atende apenas o webhook. A URL muda a cada execução, e o comando registra a nova. Em produção, sem túnel: `npm run webhook -- --url https://seu-dominio`.
 
-Em produção, use a mesma rota no endereço público do servidor.
+#### Como funciona
+- **Vínculo (opt-in):** o bot só fala com quem iniciou a conversa. O botão **Telegram**, no cadastro do cliente, e **Vincular Telegram**, no portal, geram o link `https://t.me/BOT?start=codigo`, que vale por 7 dias e uma única vez. Ao tocar em Iniciar, o `chat_id` é gravado em `canais_usuario`.
+- **Envio:** cada aviso é gravado como `enfileirada` e enviado com `sendMessage` depois do commit. O `message_id` vai para `id_externo`, e o status passa a `enviada`. Cliente sem vínculo fica com `falha` e o motivo; depois de vincular, **Tentar de novo** envia.
+- **Orçamento:** os botões aprovam todos os itens ou recusam a OS, marcam a mensagem como `respondida` e chamam `answerCallbackQuery`. Só a mensagem mais recente vale: se o orçamento mudar, os botões antigos deixam de valer. Para aprovar só parte dos itens, o cliente usa o link da mensagem.
+- **Webhook `POST /webhook/telegram`:** confere o cabeçalho `X-Telegram-Bot-Api-Secret-Token` (401 se não conferir), responde 200 antes de processar e ignora `update_id` repetido. Toda mensagem e todo clique recebidos ficam em `mensagens`, com o `payload_bruto`.
+- **Erros:** no 429, o envio espera o `retry_after` e tenta de novo; erros temporários usam backoff, até 5 tentativas. No 403 (o cliente bloqueou o bot), o vínculo é desativado. A descrição e o código do erro aparecem na tela **Mensagens**.
+
+O Telegram não informa "entregue" nem "lida". O ciclo de cada mensagem é `enfileirada` → `enviada` ou `falha` → `respondida`, esta quando o cliente clica em um botão ou responde à mensagem do bot.
 
 ### Consulta por placa (PlacaFipe)
 A consulta por placa é um serviço pago, porque não existe API oficial gratuita. Contrate um plano em [placafipe.com.br](https://placafipe.com.br) e preencha `PLACA_API_TOKEN=...`. Sem o token, o cadastro usa a busca em cascata da FIPE (marca → modelo → ano), que é gratuita.
@@ -181,12 +173,16 @@ oficinastatus/
 │   │   └── services/
 │   │       ├── ordens.js         # regras das 7 etapas (máquina de estados)
 │   │       ├── notificacao.js    # textos de cada aviso
-│   │       ├── envio.js          # e-mail (SMTP) e WhatsApp (Meta), com fila
+│   │       ├── envio.js          # e-mail (SMTP) e Telegram, com fila e backoff
+│   │       ├── telegram.js       # cliente da Bot API
+│   │       ├── botTelegram.js    # /start, mensagens recebidas e botões do webhook
+│   │       ├── canais.js         # vínculo (opt-in) pelo deep link
 │   │       ├── auth.js           # login, JWT, convites e permissões
 │   │       ├── placa.js          # consulta por placa (PlacaFipe)
 │   │       ├── fipe.js           # API FIPE (Parallelum) com cache
 │   │       └── relatorios.js     # indicadores do painel
-│   └── test/                     # fluxo completo, vistoria, webhook e PostgreSQL pela API
+│   ├── scripts/webhook.js        # npm run webhook: túnel + setWebhook
+│   └── test/                     # fluxo completo, vistoria, Telegram e PostgreSQL pela API
 ├── client/src/
 │   ├── acesso/                   # entrar, primeiro acesso, criar senha
 │   ├── oficina/                  # painel, quadro, OS, nova OS, cadastros, equipe, integrações
@@ -201,7 +197,7 @@ oficinastatus/
 
 ## Banco de dados
 
-O banco tem as cinco entidades pedidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) e mais `usuarios`, `itens_orcamento`, `fotos`, `avarias`, `avaria_servicos` e `catalogo_servicos` (tabela de preços). Detalhes e cardinalidades estão em [docs/der.md](docs/der.md).
+O banco tem as cinco entidades pedidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) e mais `canais_usuario`, `comunicacoes` (e-mails e registros do sistema), `usuarios`, `itens_orcamento`, `fotos`, `avarias`, `avaria_servicos` e `catalogo_servicos` (tabela de preços). Detalhes e cardinalidades estão em [docs/der.md](docs/der.md).
 
 ![DER](docs/der.png)
 
@@ -214,13 +210,13 @@ Todas as rotas começam com `/api`. As rotas da oficina e do portal exigem o cab
 | Acesso | `POST /auth/login`, `POST /auth/configurar`, `GET /auth/eu`, `GET\|POST /auth/convite/:token`, `POST /auth/esqueci` | todos |
 | Ordens | `GET /ordens`, `GET /ordens/:id`, `POST /ordens` | equipe |
 | Etapas | `POST /ordens/:id/diagnostico` · `/itens` · `/orcamento/enviar` · `/aprovacao` · `/execucao` · `/peca` · `/pronto` · `/entrega` · `/responsavel` · `/fotos` | equipe |
-| Cadastros | `/clientes`, `/clientes/:id/convite`, `/veiculos`, `GET /veiculos/placa/:placa` | equipe |
+| Cadastros | `/clientes`, `/clientes/:id/convite`, `/clientes/:id/telegram`, `/veiculos`, `GET /veiculos/placa/:placa` | equipe |
 | FIPE | `GET /fipe/:tipo/marcas[/:marca/modelos[/:modelo/anos[/:ano]]]` | equipe |
 | Vistoria 3D | `GET /ordens/:id/avarias/sugestao?zona=&tipo=&gravidade=`, `POST /ordens/:id/avarias`, `PUT\|DELETE /ordens/:id/avarias/:avaria`, `POST /ordens/:id/avarias/orcamento`, `GET /catalogo`, `PUT /catalogo/:id` (admin) | equipe |
-| Mensagens | `GET /mensagens`, `POST /mensagens/:id/enviada`, `POST /mensagens/:id/reenviar` | equipe |
-| Gestão | `GET /relatorios/painel`, `/equipe`, `GET /integracoes`, `POST /integracoes/teste-email\|teste-whatsapp` | admin |
-| Webhook | `GET\|POST /webhooks/whatsapp` | Meta (token de verificação e assinatura) |
-| Portal | `GET /portal/resumo`, `GET /portal/ordens/:id`, `POST /portal/ordens/:id/resposta` | cliente |
+| Mensagens | `GET /mensagens`, `POST /mensagens/telegram\|email/:id/reenviar` | equipe |
+| Gestão | `GET /relatorios/painel`, `/equipe`, `GET /integracoes`, `POST /integracoes/teste-email\|teste-telegram`, `POST /integracoes/telegram/vinculo` | admin |
+| Webhook (fora de `/api`) | `POST /webhook/telegram` | Telegram (cabeçalho com o segredo) |
+| Portal | `GET /portal/resumo`, `GET /portal/ordens/:id`, `POST /portal/ordens/:id/resposta`, `POST /portal/telegram` | cliente |
 | Link público | `GET /publico/ordens/:codigo`, `POST /publico/ordens/:codigo/resposta` | qualquer um com o link |
 
 O link público usa um código aleatório, não o número da OS. Assim, ninguém consegue ver a OS de outro cliente trocando o número na URL.

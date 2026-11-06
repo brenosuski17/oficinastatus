@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "migrate": "node src/migrar.js",
     "seed": "node src/seed.js",
+    "webhook": "node scripts/webhook.js",
     "test": "node --test test/*.test.js"
   },
   "license": "ISC",

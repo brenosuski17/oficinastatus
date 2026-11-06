@@ -3,7 +3,7 @@
 Versões em imagem para o relatório: [der.png](der.png) e [fluxo-estados.png](fluxo-estados.png).
 O GitHub também renderiza os diagramas abaixo diretamente a partir do código Mermaid.
 
-As cinco entidades exigidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) estão presentes. As tabelas extras dão suporte ao login (`usuarios`), ao orçamento por itens (`itens_orcamento`), às fotos (`fotos`) e à vistoria 3D (`avarias`, `avaria_servicos` e `catalogo_servicos`).
+As cinco entidades exigidas (`clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens`) estão presentes. `mensagens` e `canais_usuario` guardam o que passa pelo bot do Telegram, e `comunicacoes`, os e-mails e os registros do sistema. As tabelas `convites_canal` (convites de vínculo pendentes) e `updates_telegram` (idempotência do webhook) são de apoio e ficam fora do diagrama. As outras tabelas extras dão suporte ao login (`usuarios`), ao orçamento por itens (`itens_orcamento`), às fotos (`fotos`) e à vistoria 3D (`avarias`, `avaria_servicos` e `catalogo_servicos`).
 
 ```mermaid
 erDiagram
@@ -14,8 +14,12 @@ erDiagram
     ORDENS_SERVICO ||--|{ ETAPAS : "passa por (7)"
     ORDENS_SERVICO ||--o{ ITENS_ORCAMENTO : "tem"
     ORDENS_SERVICO ||--o{ FOTOS : "tem"
-    ORDENS_SERVICO ||--o{ MENSAGENS : "gera"
+    USUARIOS ||--o{ CANAIS_USUARIO : "vincula o bot"
+    CANAIS_USUARIO |o--o{ MENSAGENS : "envia e recebe"
+    ORDENS_SERVICO |o--o{ MENSAGENS : "gera"
     ETAPAS |o--o{ MENSAGENS : "notifica"
+    ORDENS_SERVICO |o--o{ COMUNICACOES : "gera"
+    ETAPAS |o--o{ COMUNICACOES : "notifica"
     ORDENS_SERVICO ||--o{ AVARIAS : "vistoria 3D"
     AVARIAS ||--|{ AVARIA_SERVICOS : "precisa de"
     CATALOGO_SERVICOS |o--o{ AVARIA_SERVICOS : "preço de"
@@ -24,7 +28,7 @@ erDiagram
     CLIENTES {
         INTEGER id PK
         TEXT nome
-        TEXT telefone "WhatsApp com DDD"
+        TEXT telefone "com DDD"
         TEXT email
         TEXT cpf
         TIMESTAMPTZ criado_em
@@ -126,22 +130,48 @@ erDiagram
         NUMERIC valor
         INTEGER minutos
     }
+    CANAIS_USUARIO {
+        BIGINT id PK
+        BIGINT usuario_id FK
+        plataforma_msg plataforma "telegram | discord"
+        TEXT chat_id "chat.id do Telegram"
+        TEXT codigo_convite "payload do deep link"
+        BOOLEAN ativo
+        TIMESTAMPTZ vinculado_em
+    }
     MENSAGENS {
+        BIGINT id PK
+        BIGINT canal_usuario_id FK
+        plataforma_msg plataforma "telegram | discord"
+        TEXT direcao "saida | entrada"
+        TEXT id_externo "message_id do Telegram"
+        TEXT conteudo
+        status_msg status "enfileirada | enviada | falha | respondida"
+        TEXT erro_codigo
+        TEXT erro_descricao
+        JSONB payload_bruto "update recebido"
+        TIMESTAMPTZ criada_em
+        TIMESTAMPTZ enviada_em
+        TIMESTAMPTZ respondida_em
+        INTEGER ordem_id FK
+        INTEGER etapa_id FK
+        JSONB reply_markup "botões"
+        BOOLEAN teste
+    }
+    COMUNICACOES {
         INTEGER id PK
         INTEGER ordem_id FK
         INTEGER etapa_id FK
-        TEXT canal "email | whatsapp | sistema"
+        TEXT canal "email | sistema"
         TEXT direcao "saida | entrada"
         TEXT destinatario
         TEXT assunto
         TEXT conteudo
         TEXT status "pendente | enviada | falhou | recebida"
         TEXT erro
-        TEXT id_externo "id do SMTP ou da Meta"
+        TEXT id_externo "id do SMTP"
+        TIMESTAMPTZ criado_em
         TIMESTAMPTZ enviada_em
-        TEXT status_entrega "sent | delivered | read | failed"
-        TIMESTAMPTZ status_entrega_em
-        INTEGER erro_codigo "código de erro da Meta"
     }
 ```
 

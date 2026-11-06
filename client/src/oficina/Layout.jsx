@@ -31,7 +31,7 @@ export default function LayoutOficina() {
   const telaCheia = /\/oficina\/inspecao\/\d+/.test(local.pathname)
 
   useEffect(() => {
-    const atualizar = () => api.mensagens({ status: 'pendente' }).then((l) => setPendentes(l.length)).catch(() => {})
+    const atualizar = () => api.mensagens({ status: 'enfileirada' }).then((l) => setPendentes(l.length)).catch(() => {})
     atualizar()
     const t = setInterval(atualizar, 30000)
     window.addEventListener('os:mudou', atualizar)

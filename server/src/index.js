@@ -4,6 +4,7 @@ const app = require('./app');
 const config = require('./config');
 const auth = require('./services/auth');
 const catalogo = require('./services/catalogo');
+const envio = require('./services/envio');
 const { pendentes } = require('./migrar');
 
 async function iniciar() {
@@ -24,8 +25,10 @@ async function iniciar() {
   const PORTA_WEBHOOK = process.env.WEBHOOK_PORT || 3334;
   const soWebhook = express();
   soWebhook.disable('x-powered-by');
-  soWebhook.use('/api/webhooks/whatsapp', require('./routes/webhook'));
-  soWebhook.listen(PORTA_WEBHOOK, '127.0.0.1', () => console.log(`  Webhook para o túnel em http://localhost:${PORTA_WEBHOOK}/api/webhooks/whatsapp`));
+  soWebhook.use('/webhook/telegram', require('./routes/webhookTelegram'));
+  soWebhook.listen(PORTA_WEBHOOK, '127.0.0.1', () => console.log(`  Webhook para o túnel em http://localhost:${PORTA_WEBHOOK}/webhook/telegram`));
+
+  await envio.retomarFila();
 }
 
 iniciar().catch((e) => {

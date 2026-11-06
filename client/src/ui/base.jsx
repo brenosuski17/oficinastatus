@@ -25,7 +25,7 @@ const VARIANTES = {
   sucesso: 'bg-[#0e9f5c] text-white hover:bg-[#0b8a4f] shadow-[0_6px_16px_-6px_rgba(18,183,106,.6)]',
   perigo: 'bg-superficie text-erro border border-erro-borda hover:bg-erro-bg',
   sinal: 'bg-sinal text-white hover:bg-[#ea5a05] shadow-[0_6px_16px_-6px_rgba(255,106,19,.6)]',
-  whats: 'bg-[#1fa855] text-white hover:bg-[#178c46]',
+  telegram: 'bg-[#229ed9] text-white hover:bg-[#1c86b8]',
 }
 const TAMANHOS = { p: 'h-9 px-3 text-[14px] gap-1.5 rounded-lg', m: 'h-11 px-4 text-[15px] gap-2 rounded-xl', g: 'h-13 px-6 text-[16px] gap-2 rounded-xl' }
 

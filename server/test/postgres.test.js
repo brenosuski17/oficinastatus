@@ -9,7 +9,7 @@ const { criarBancoDeTeste } = require('./apoio');
 let apagarBanco, api, base, T, db, migracoes;
 
 before(async () => {
-  Object.assign(process.env, { JWT_SECRET: 'teste', SMTP_HOST: '', WHATSAPP_TOKEN: '' });
+  Object.assign(process.env, { JWT_SECRET: 'teste', SMTP_HOST: '', TELEGRAM_TOKEN: '' });
   apagarBanco = await criarBancoDeTeste();
   db = require('../src/db');
   migracoes = require('../src/migrar');
@@ -36,30 +36,71 @@ async function novoVeiculo(placa, telefone) {
 test('migrations rodam uma vez, em ordem, e recusam arquivo alterado', async () => {
   assert.deepEqual(await migracoes.migrar(), []);
   assert.deepEqual(await migracoes.pendentes(), []);
-  const { versao } = await db.prepare('SELECT versao FROM schema_migrations').get();
-  assert.equal(versao, '001_inicial.sql');
+  const versoes = (await db.prepare('SELECT versao FROM schema_migrations ORDER BY versao').all()).map((v) => v.versao);
+  assert.deepEqual(versoes.slice(0, 2), ['001_inicial.sql', '002_telegram.sql']);
 
   const original = path.join(__dirname, '..', 'migrations');
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'migrations-'));
   try {
     fs.copyFileSync(path.join(original, '001_inicial.sql'), path.join(pasta, '001_inicial.sql'));
-    fs.writeFileSync(path.join(pasta, '002_nova.sql'), 'CREATE TABLE tabela_nova (id INTEGER PRIMARY KEY);');
-    assert.deepEqual(await migracoes.pendentes(pasta), ['002_nova.sql']);
-    assert.deepEqual(await migracoes.migrar(pasta), ['002_nova.sql']);
+    fs.writeFileSync(path.join(pasta, '900_nova.sql'), 'CREATE TABLE tabela_nova (id INTEGER PRIMARY KEY);');
+    assert.deepEqual(await migracoes.pendentes(pasta), ['900_nova.sql']);
+    assert.deepEqual(await migracoes.migrar(pasta), ['900_nova.sql']);
     assert.deepEqual(await migracoes.migrar(pasta), []);
 
     // Uma migration com erro é desfeita por inteiro
-    fs.writeFileSync(path.join(pasta, '003_quebrada.sql'), 'CREATE TABLE outra (id INTEGER); SELECT coluna_que_nao_existe;');
+    fs.writeFileSync(path.join(pasta, '901_quebrada.sql'), 'CREATE TABLE outra (id INTEGER); SELECT coluna_que_nao_existe;');
     await assert.rejects(migracoes.migrar(pasta));
     assert.equal((await db.prepare("SELECT to_regclass('outra') AS t").get()).t, null);
-    fs.rmSync(path.join(pasta, '003_quebrada.sql'));
+    fs.rmSync(path.join(pasta, '901_quebrada.sql'));
 
     fs.appendFileSync(path.join(pasta, '001_inicial.sql'), '\n-- editada depois');
     await assert.rejects(migracoes.migrar(pasta), /foi alterada/);
   } finally {
     fs.rmSync(pasta, { recursive: true, force: true });
-    await db.exec("DROP TABLE tabela_nova; DELETE FROM schema_migrations WHERE versao = '002_nova.sql'");
+    await db.exec("DROP TABLE tabela_nova; DELETE FROM schema_migrations WHERE versao = '900_nova.sql'");
   }
+});
+
+test('a migration do Telegram preserva e-mails e arquiva o WhatsApp', async () => {
+  const cliente = await db.conectar();
+  const pasta = path.join(__dirname, '..', 'migrations');
+  try {
+    await cliente.query('CREATE SCHEMA migracao_002; SET search_path = migracao_002');
+    await cliente.query(fs.readFileSync(path.join(pasta, '001_inicial.sql'), 'utf8'));
+    await cliente.query(`INSERT INTO clientes (nome, telefone) VALUES ('Ana', '42999990000');
+      INSERT INTO veiculos (cliente_id, placa, marca, modelo) VALUES (1, 'ABC1D23', 'VW', 'Gol');
+      INSERT INTO ordens_servico (veiculo_id, codigo_publico, problema_relatado) VALUES (1, 'x', 'y');
+      INSERT INTO mensagens (ordem_id, canal, direcao, destinatario, conteudo, status) VALUES
+        (1, 'email', 'saida', 'a@b.com', 'aviso', 'enviada'), (1, 'whatsapp', 'saida', '42999990000', 'antiga', 'pendente'),
+        (1, 'sistema', 'entrada', NULL, 'aprovou', 'recebida')`);
+    await cliente.query(fs.readFileSync(path.join(pasta, '002_telegram.sql'), 'utf8'));
+
+    const { rows: historico } = await cliente.query('SELECT canal, status, conteudo FROM historico_mensagens ORDER BY id');
+    assert.deepEqual(historico, [
+      { canal: 'email', status: 'enviada', conteudo: 'aviso' },
+      { canal: 'sistema', status: 'respondida', conteudo: 'aprovou' },
+    ]);
+    assert.equal((await cliente.query('SELECT conteudo FROM mensagens_whatsapp_arquivo')).rows[0].conteudo, 'antiga');
+    assert.equal((await cliente.query('SELECT COUNT(*)::int n FROM mensagens')).rows[0].n, 0);
+    // Novas linhas continuam numerando sem colidir
+    await cliente.query("INSERT INTO comunicacoes (canal, direcao, conteudo, status) VALUES ('email', 'saida', 'novo', 'pendente')");
+    await cliente.query("INSERT INTO mensagens (plataforma, direcao, conteudo) VALUES ('telegram', 'saida', 'novo')");
+  } finally {
+    await cliente.query('RESET search_path; DROP SCHEMA IF EXISTS migracao_002 CASCADE');
+    cliente.release();
+  }
+});
+
+test('canais_usuario e mensagens têm os nomes do Anexo A.5', async () => {
+  const colunas = async (t) => (await db.prepare('SELECT column_name AS c FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?').all(t)).map((x) => x.c);
+  const canais = await colunas('canais_usuario');
+  for (const c of ['id', 'usuario_id', 'plataforma', 'chat_id', 'codigo_convite', 'ativo', 'vinculado_em']) assert.ok(canais.includes(c), c);
+  const msgs = await colunas('mensagens');
+  for (const c of ['id', 'canal_usuario_id', 'plataforma', 'direcao', 'id_externo', 'conteudo', 'status', 'erro_codigo', 'erro_descricao', 'payload_bruto', 'criada_em', 'enviada_em', 'respondida_em']) assert.ok(msgs.includes(c), c);
+  const enumDe = async (t) => (await db.prepare('SELECT enumlabel AS e FROM pg_enum e JOIN pg_type y ON y.oid = e.enumtypid WHERE y.typname = ? AND y.typnamespace = current_schema()::regnamespace ORDER BY e.enumsortorder').all(t)).map((x) => x.e);
+  assert.deepEqual(await enumDe('plataforma_msg'), ['telegram', 'discord']);
+  assert.deepEqual(await enumDe('status_msg'), ['enfileirada', 'enviada', 'falha', 'respondida']);
 });
 
 test('e-mail e buscas não diferenciam maiúsculas', async () => {

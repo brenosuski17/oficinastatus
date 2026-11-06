@@ -5,13 +5,13 @@ import { api } from '../lib/api'
 import { Cabecalho, ErroCarga, Esqueleto, Vazio, useDados } from '../ui/base'
 import Mensagem from './Mensagem'
 
-const FILTROS = [['', 'Todas'], ['pendente', 'Para enviar'], ['falhou', 'Com falha'], ['enviada', 'Enviadas'], ['recebida', 'Respostas'], ['teste', 'Testes']]
+const FILTROS = [['', 'Todas'], ['enfileirada', 'Na fila'], ['falha', 'Com falha'], ['enviada', 'Enviadas'], ['respondida', 'Respondidas'], ['teste', 'Testes']]
 
 export default function Mensagens() {
   const [status, setStatus] = useState('')
   const { dados, erro, carregando, recarregar } = useDados(() => api.mensagens(status === 'teste' ? { origem: 'teste' } : { status }), [status])
 
-  // Os status de entrega chegam depois, pelo webhook da Meta
+  // O envio e as respostas dos clientes chegam depois da tela aberta
   useEffect(() => {
     const t = setInterval(recarregar, 15000)
     return () => clearInterval(t)
@@ -32,8 +32,8 @@ export default function Mensagens() {
       </Cabecalho>
       {erro && <ErroCarga erro={erro} tentar={recarregar} />}
       {carregando && !dados && <div className="space-y-3">{[1, 2, 3].map((i) => <Esqueleto key={i} className="h-32" />)}</div>}
-      {dados?.length === 0 && <Vazio icone={MessagesSquare} titulo={status === 'pendente' ? 'Tudo enviado' : 'Nenhuma mensagem aqui'} />}
-      {dados?.length > 0 && <ul className="space-y-3 max-w-4xl">{dados.map((m) => <Mensagem key={m.id} m={m} aoMudar={recarregar} mostrarOS />)}</ul>}
+      {dados?.length === 0 && <Vazio icone={MessagesSquare} titulo={status === 'enfileirada' ? 'Fila vazia' : 'Nenhuma mensagem aqui'} />}
+      {dados?.length > 0 && <ul className="space-y-3 max-w-4xl">{dados.map((m) => <Mensagem key={`${m.canal}-${m.id}`} m={m} aoMudar={recarregar} mostrarOS />)}</ul>}
     </>
   )
 }

@@ -5,6 +5,7 @@ const auth = require('../services/auth');
 const ordens = require('../services/ordens');
 const fipe = require('../services/fipe');
 const envio = require('../services/envio');
+const canais = require('../services/canais');
 const relatorios = require('../services/relatorios');
 const config = require('../config');
 const { HttpError, rota, naoEncontrado, requisicaoInvalida, proibido, conflito } = require('../errors');
@@ -17,52 +18,55 @@ mensagens.get('/', rota(async (req, res) => {
   const p = [];
   if (req.query.status) { where.push('m.status = ?'); p.push(req.query.status); }
   if (req.query.canal) { where.push('m.canal = ?'); p.push(req.query.canal); }
-  if (req.query.origem === 'teste') where.push('m.ordem_id IS NULL');
-  // Os testes de Integrações são só do admin
+  if (req.query.origem === 'teste') where.push('m.teste');
+  // Testes e mensagens sem OS são só do admin
   if (req.usuario.papel === 'mecanico') { where.push('(m.ordem_id IS NOT NULL AND (o.mecanico_id IS NULL OR o.mecanico_id = ?))'); p.push(req.usuario.id); }
   res.json(await db.prepare(
-    `SELECT m.*, c.nome AS cliente_nome, v.placa, e.tipo AS etapa_tipo
-       FROM mensagens m LEFT JOIN ordens_servico o ON o.id = m.ordem_id
+    `SELECT m.*, COALESCE(c.nome, m.usuario_nome) AS cliente_nome, v.placa, e.tipo AS etapa_tipo
+       FROM historico_mensagens m LEFT JOIN ordens_servico o ON o.id = m.ordem_id
        LEFT JOIN veiculos v ON v.id = o.veiculo_id LEFT JOIN clientes c ON c.id = v.cliente_id
        LEFT JOIN etapas e ON e.id = m.etapa_id
-      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY m.id DESC LIMIT 300`
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY m.criada_em DESC, m.id DESC LIMIT 300`
   ).all(...p));
 }));
-// Envio manual pelo WhatsApp Web (quando a API da Meta não está configurada)
-mensagens.post('/:id/enviada', rota(async (req, res) => {
-  const r = await db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = now() WHERE id = ? AND direcao = 'saida' AND link_envio IS NOT NULL").run(req.params.id);
-  if (!r.changes) throw naoEncontrado('Mensagem');
-  res.json(await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(req.params.id));
-}));
-// Tenta de novo uma mensagem que falhou
-mensagens.post('/:id/reenviar', rota(async (req, res) => {
+
+const lerHistorico = (canal, id) => db.prepare('SELECT * FROM historico_mensagens WHERE canal = ? AND id = ?').get(canal, id);
+
+// Tenta de novo uma mensagem do bot: volta para a fila, com o vínculo atual do destinatário
+mensagens.post('/telegram/:id/reenviar', rota(async (req, res) => {
   const m = await db.prepare("SELECT * FROM mensagens WHERE id = ? AND direcao = 'saida'").get(req.params.id);
   if (!m) throw naoEncontrado('Mensagem');
-  if (m.link_envio) throw conflito('Esta mensagem é enviada manualmente pelo WhatsApp.');
-  if (!m.ordem_id && req.usuario.papel !== 'admin') throw proibido();
-  await db.prepare("UPDATE mensagens SET status = 'pendente', erro = NULL, erro_codigo = NULL, id_externo = NULL, status_entrega = NULL, status_entrega_em = NULL WHERE id = ?").run(m.id);
-  if (!m.ordem_id) {
-    await envio.despachar(m.id, extraTeste());
-  } else {
-    const o = await db.prepare('SELECT o.codigo_publico, c.nome FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id WHERE o.id = ?').get(m.ordem_id);
-    const link = `${config.appUrl()}/acompanhar/${o.codigo_publico}`;
-    await envio.despachar(m.id, { email: { link, titulo: m.assunto }, parametros: [o.nome.split(' ')[0], m.conteudo.split('\n')[0], link] });
+  if (m.teste && req.usuario.papel !== 'admin') throw proibido();
+  if (!config.status().telegram.ativo) throw conflito('Configure TELEGRAM_TOKEN no .env para enviar pelo Telegram.');
+  let canalId = m.canal_usuario_id;
+  if (m.ordem_id) {
+    const o = await ordens.buscar(m.ordem_id, req.usuario);
+    canalId = (await canais.ativoDoCliente(o.cliente_id))?.id;
+  } else if (m.teste) {
+    canalId = (await canais.ativoDoUsuario(req.usuario.id))?.id;
   }
-  res.json(await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(m.id));
+  if (!canalId) throw conflito('O destinatário ainda não vinculou o Telegram.');
+  await db.prepare(
+    "UPDATE mensagens SET status = 'enfileirada', canal_usuario_id = ?, erro_codigo = NULL, erro_descricao = NULL, id_externo = NULL, enviada_em = NULL, respondida_em = NULL WHERE id = ?"
+  ).run(canalId, m.id);
+  envio.enfileirarTelegram(m.id);
+  res.json(await lerHistorico('telegram', m.id));
 }));
 
-// Testes de Ajustes > Integrações: ficam guardados em mensagens, sem OS, para acompanhar o status na tela Mensagens
-const extraTeste = () => ({
-  email: { titulo: 'Envio de e-mail funcionando' },
-  parametros: ['Teste', 'o envio pelo WhatsApp está funcionando.', config.appUrl()],
-});
-async function enviarTeste(canal, destinatario, assunto, conteudo) {
-  const { lastInsertRowid: id } = await db.prepare("INSERT INTO mensagens (canal, direcao, destinatario, assunto, conteudo) VALUES (?, 'saida', ?, ?, ?)").run(canal, destinatario, assunto, conteudo);
-  await envio.despachar(id, extraTeste());
-  const m = await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
-  if (m.status === 'falhou') throw new HttpError(502, m.erro);
-  return m;
-}
+// Tenta de novo um e-mail que falhou
+mensagens.post('/email/:id/reenviar', rota(async (req, res) => {
+  const m = await db.prepare("SELECT * FROM comunicacoes WHERE id = ? AND canal = 'email' AND direcao = 'saida'").get(req.params.id);
+  if (!m) throw naoEncontrado('Mensagem');
+  if (!m.ordem_id && req.usuario.papel !== 'admin') throw proibido();
+  await db.prepare("UPDATE comunicacoes SET status = 'pendente', erro = NULL, id_externo = NULL WHERE id = ?").run(m.id);
+  if (!m.ordem_id) {
+    await envio.despacharEmail(m.id, { titulo: 'Envio de e-mail funcionando' });
+  } else {
+    const o = await db.prepare('SELECT codigo_publico FROM ordens_servico WHERE id = ?').get(m.ordem_id);
+    await envio.despacharEmail(m.id, { link: `${config.appUrl()}/acompanhar/${o.codigo_publico}`, titulo: m.assunto });
+  }
+  res.json(await lerHistorico('email', m.id));
+}));
 
 // ------------------------------------------------------------- FIPE (proxy)
 const fipeR = express.Router();
@@ -90,19 +94,33 @@ catalogoR.put('/:id', auth.somenteAdmin, rota(async (req, res) => {
 // ------------------------------------------------------------- relatórios e integrações (admin)
 const admin = express.Router();
 admin.get('/relatorios/painel', auth.somenteAdmin, rota(async (req, res) => res.json(await relatorios.painel(req.usuario, parseInt(req.query.meses, 10) || 6))));
-admin.get('/integracoes', auth.equipe, rota((req, res) => res.json({ ...config.status(), app_url: config.appUrl(), oficina: config.oficina() })));
+admin.get('/integracoes', auth.equipe, rota(async (req, res) => res.json({
+  ...config.status(), app_url: config.appUrl(), oficina: config.oficina(),
+  meu_telegram: Boolean(await canais.ativoDoUsuario(req.usuario.id)),
+})));
+// Testes de Ajustes > Integrações: ficam guardados, para acompanhar o resultado na tela Mensagens
 admin.post('/integracoes/teste-email', auth.somenteAdmin, rota(async (req, res) => {
   if (!config.status().email.ativo) throw requisicaoInvalida('Configure o SMTP no .env primeiro.');
   const para = req.body.para || req.usuario.email;
-  const m = await enviarTeste('email', para, 'Teste de e-mail — OficinaStatus', 'Se você recebeu esta mensagem, o envio de e-mails está funcionando.');
+  const { lastInsertRowid: id } = await db.prepare(
+    "INSERT INTO comunicacoes (canal, direcao, destinatario, assunto, conteudo) VALUES ('email', 'saida', ?, 'Teste de e-mail — OficinaStatus', 'Se você recebeu esta mensagem, o envio de e-mails está funcionando.')"
+  ).run(para);
+  await envio.despacharEmail(id, { titulo: 'Envio de e-mail funcionando' });
+  const m = await db.prepare('SELECT * FROM comunicacoes WHERE id = ?').get(id);
+  if (m.status === 'falhou') throw new HttpError(502, m.erro);
   res.json({ ok: true, para, id: m.id_externo, mensagem_id: m.id });
 }));
-admin.post('/integracoes/teste-whatsapp', auth.somenteAdmin, rota(async (req, res) => {
-  if (!config.status().whatsapp.ativo) throw requisicaoInvalida('Configure WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no .env primeiro.');
-  if (!req.body.telefone) throw requisicaoInvalida('Informe o número de destino.');
-  const telefone = String(req.body.telefone).replace(/\D/g, '');
-  if (!telefone) throw requisicaoInvalida('Informe o número de destino.');
-  const m = await enviarTeste('whatsapp', telefone, 'Teste de WhatsApp — OficinaStatus', 'Teste do OficinaStatus: o envio pelo WhatsApp está funcionando.');
+admin.post('/integracoes/telegram/vinculo', auth.somenteAdmin, rota(async (req, res) => res.json({ link: await canais.gerarLink(req.usuario.id) })));
+admin.post('/integracoes/teste-telegram', auth.somenteAdmin, rota(async (req, res) => {
+  if (!config.status().telegram.ativo) throw requisicaoInvalida('Configure TELEGRAM_TOKEN no .env primeiro.');
+  const canal = await canais.ativoDoUsuario(req.usuario.id);
+  if (!canal) throw requisicaoInvalida('Vincule o seu Telegram primeiro.');
+  const { lastInsertRowid: id } = await db.prepare(
+    "INSERT INTO mensagens (canal_usuario_id, plataforma, direcao, conteudo, teste) VALUES (?, 'telegram', 'saida', 'Teste do OficinaStatus: o envio pelo Telegram está funcionando.', true)"
+  ).run(canal.id);
+  await envio.despacharTelegram(id, { tentativas: 1 });
+  const m = await db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
+  if (m.status === 'falha') throw new HttpError(502, m.erro_descricao);
   res.json({ ok: true, id: m.id_externo, mensagem_id: m.id });
 }));
 
@@ -118,8 +136,10 @@ portal.get('/resumo', rota(async (req, res) => {
     total_aprovado: o.total_aprovado, previsao_entrega: o.previsao_entrega, criado_em: o.criado_em, atualizado_em: o.atualizado_em, entregue_em: o.entregue_em,
     etapas: o.etapas.map(({ tipo, status }) => ({ tipo, status })),
   }));
-  res.json({ cliente, veiculos, ordens: lista, oficina: config.oficina() });
+  const telegram = { disponivel: Boolean(config.telegram().botUsername), vinculado: Boolean(await canais.ativoDoUsuario(req.usuario.id)) };
+  res.json({ cliente, veiculos, ordens: lista, oficina: config.oficina(), telegram });
 }));
+portal.post('/telegram', rota(async (req, res) => res.json({ link: await canais.gerarLink(req.usuario.id) })));
 async function ordemDoCliente(req) {
   const o = await ordens.buscar(req.params.id);
   if (o.cliente_id !== req.usuario.cliente_id) throw proibido();

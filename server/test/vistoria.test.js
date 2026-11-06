@@ -6,7 +6,7 @@ const { criarBancoDeTeste } = require('./apoio');
 let api, base, T, osId, apagarBanco;
 
 before(async () => {
-  Object.assign(process.env, { JWT_SECRET: 'teste', SMTP_HOST: '', WHATSAPP_TOKEN: '' });
+  Object.assign(process.env, { JWT_SECRET: 'teste', SMTP_HOST: '', TELEGRAM_TOKEN: '' });
   apagarBanco = await criarBancoDeTeste();
   const app = require('../src/app');
   api = app.listen(0);
