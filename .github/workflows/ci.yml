@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-e-testes:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: oficina
+          POSTGRES_USER: oficina
+          POSTGRES_PASSWORD: oficina
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oficina -d oficina"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://oficina:oficina@localhost:5432/oficina
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+      - name: Instalar dependências
+        run: |
+          npm ci
+          npm ci --prefix server
+          npm ci --prefix client
+      - name: Lint
+        run: npm run lint
+      - name: Testes
+        run: npm test --prefix server
+      - name: Build do site
+        run: npm run build
