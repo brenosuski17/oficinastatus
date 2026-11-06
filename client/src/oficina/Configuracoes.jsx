@@ -24,9 +24,9 @@ export default function Configuracoes() {
   async function testar(tipo) {
     setEnviando(tipo)
     try {
-      if (tipo === 'email') { const r = await api.testeEmail(teste.email); avisar(`E-mail de teste enviado para ${r.para}.`) }
-      else { await api.testeWhatsapp(teste.telefone); avisar('Mensagem de teste enviada pelo WhatsApp.') }
-    } catch (e) { avisar(e.message, 'erro') } finally { setEnviando(null) }
+      if (tipo === 'email') { const r = await api.testeEmail(teste.email); avisar(`E-mail de teste enviado para ${r.para}. Ele fica em Mensagens > Testes.`) }
+      else { await api.testeWhatsapp(teste.telefone); avisar('Teste aceito pela Meta. Acompanhe a entrega em Mensagens > Testes.') }
+    } catch (e) { avisar(`${e.message} O teste fica em Mensagens > Testes.`, 'erro') } finally { setEnviando(null) }
   }
 
   return (

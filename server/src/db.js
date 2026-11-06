@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS fotos (
 
 CREATE TABLE IF NOT EXISTS mensagens (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  ordem_id      INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+  ordem_id      INTEGER REFERENCES ordens_servico(id) ON DELETE CASCADE,  -- NULL = teste de Ajustes > Integrações
   etapa_id      INTEGER REFERENCES etapas(id) ON DELETE SET NULL,
   canal         TEXT NOT NULL CHECK (canal IN ('email','whatsapp','sistema')),
   direcao       TEXT NOT NULL CHECK (direcao IN ('saida','entrada')),
@@ -121,7 +121,10 @@ CREATE TABLE IF NOT EXISTS mensagens (
   id_externo    TEXT,                          -- id retornado pelo provedor (SMTP / Meta)
   link_envio    TEXT,                          -- wa.me, usado quando a API do WhatsApp não está configurada
   criado_em     TEXT NOT NULL DEFAULT (datetime('now')),
-  enviada_em    TEXT
+  enviada_em    TEXT,
+  status_entrega    TEXT CHECK (status_entrega IN ('sent','delivered','read','failed')),  -- webhook da Meta
+  status_entrega_em TEXT,
+  erro_codigo       INTEGER                      -- código de erro da Meta
 );
 
 -- Vistoria 3D: cada ponto marcado no carro é uma avaria, com os serviços escolhidos para ela
@@ -196,6 +199,25 @@ if (sqlAvarias && !sqlAvarias.includes("'servico'")) {
 if (!db.prepare('PRAGMA table_info(itens_orcamento)').all().some((c) => c.name === 'avaria_id')) {
   db.exec('ALTER TABLE itens_orcamento ADD COLUMN avaria_id INTEGER REFERENCES avarias(id) ON DELETE SET NULL');
 }
+
+// Migração: os testes de Integrações não têm OS, e o SQLite só tira o NOT NULL refazendo a tabela
+if (db.prepare('PRAGMA table_info(mensagens)').all().find((c) => c.name === 'ordem_id').notnull) {
+  const sqlMensagens = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'mensagens'").get().sql;
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec(sqlMensagens.replace('CREATE TABLE mensagens', 'CREATE TABLE mensagens_nova').replace(/ordem_id(\s+)INTEGER NOT NULL/, 'ordem_id$1INTEGER'));
+    db.exec('INSERT INTO mensagens_nova SELECT * FROM mensagens; DROP TABLE mensagens; ALTER TABLE mensagens_nova RENAME TO mensagens;');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_ordem ON mensagens(ordem_id)');
+  })();
+  db.pragma('foreign_keys = ON');
+}
+// Migração: status de entrega informados pelo webhook da Meta
+if (!colunas('mensagens').includes('status_entrega')) {
+  db.exec(`ALTER TABLE mensagens ADD COLUMN status_entrega TEXT CHECK (status_entrega IN ('sent','delivered','read','failed'));
+           ALTER TABLE mensagens ADD COLUMN status_entrega_em TEXT;
+           ALTER TABLE mensagens ADD COLUMN erro_codigo INTEGER;`);
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_mensagens_externo ON mensagens(id_externo)');
 
 module.exports = db;
 

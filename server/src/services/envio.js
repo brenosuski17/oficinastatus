@@ -82,12 +82,16 @@ async function enviarWhatsApp({ telefone, texto, parametros }) {
     signal: AbortSignal.timeout(15000),
   });
   const dados = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(dados.error?.message || `Meta respondeu ${resp.status}`);
+  if (!resp.ok) {
+    const erro = new Error(dados.error?.error_data?.details || dados.error?.message || `Meta respondeu ${resp.status}`);
+    erro.codigo = dados.error?.code;
+    throw erro;
+  }
   return dados.messages?.[0]?.id || null;
 }
 
 const marcar = db.prepare(
-  "UPDATE mensagens SET status = ?, erro = ?, id_externo = ?, enviada_em = CASE WHEN ? = 'enviada' THEN datetime('now') ELSE enviada_em END WHERE id = ?"
+  "UPDATE mensagens SET status = ?, erro = ?, erro_codigo = ?, id_externo = ?, enviada_em = CASE WHEN ? = 'enviada' THEN datetime('now') ELSE enviada_em END WHERE id = ?"
 );
 
 /** Envia uma mensagem já registrada (status pendente) pelo canal dela e atualiza o resultado. */
@@ -101,9 +105,9 @@ async function despachar(id, extra = {}) {
     } else if (m.canal === 'whatsapp') {
       externo = await enviarWhatsApp({ telefone: m.destinatario, texto: m.conteudo, parametros: extra.parametros || [] });
     } else return;
-    marcar.run('enviada', null, externo, 'enviada', id);
+    marcar.run('enviada', null, null, externo, 'enviada', id);
   } catch (e) {
-    marcar.run('falhou', String(e.message || e).slice(0, 500), null, 'falhou', id);
+    marcar.run('falhou', String(e.message || e).slice(0, 500), e.codigo, null, 'falhou', id);
     console.error(`[envio] mensagem ${id} (${m.canal}) falhou:`, e.message);
   }
 }

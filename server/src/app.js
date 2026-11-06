@@ -9,6 +9,7 @@ const diversos = require('./routes/diversos');
 const app = express();
 app.disable('x-powered-by');
 app.use(cors());
+app.use('/api/webhooks/whatsapp', require('./routes/webhook')); // antes do express.json: precisa do corpo original
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/saude', (req, res) => res.json({ ok: true }));

@@ -119,6 +119,23 @@ Com o e-mail ativo, o cliente recebe um aviso a cada etapa. O primeiro aviso já
 
 Enquanto o WhatsApp não estiver configurado, cada aviso fica na tela **Mensagens** com o botão "Enviar pelo WhatsApp". Ele abre o WhatsApp Web com o texto pronto para o número do cliente.
 
+#### Webhook de status
+A Meta responde "aceita" ao pedido de envio e só depois avisa, pelo webhook, se a mensagem foi enviada, entregue, lida ou se falhou (com código e descrição do erro). A tela **Mensagens** mostra esse resultado, inclusive o dos testes de **Ajustes > Integrações** (aba **Testes**).
+
+1. Preencha no `.env`:
+   ```
+   WHATSAPP_WEBHOOK_VERIFY_TOKEN=um texto longo que você inventa
+   WHATSAPP_APP_SECRET=chave secreta do app (Configurações do app > Básico)
+   ```
+   e reinicie o servidor. Sem a chave secreta, os avisos são recusados.
+2. Em desenvolvimento, exponha só a porta do webhook. O endereço muda a cada execução do túnel, e o cadastro na Meta precisa ser refeito:
+   ```bash
+   cloudflared tunnel --url http://localhost:3334
+   ```
+3. No painel da Meta, em *WhatsApp → Configuração → Webhook*, informe a URL `https://<endereço-do-túnel>/api/webhooks/whatsapp` e o token de verificação. Depois, assine o campo **messages**.
+
+Em produção, use a mesma rota no endereço público do servidor.
+
 ### Consulta por placa (PlacaFipe)
 A consulta por placa é um serviço pago, porque não existe API oficial gratuita. Contrate um plano em [placafipe.com.br](https://placafipe.com.br) e preencha `PLACA_API_TOKEN=...`. Sem o token, o cadastro usa a busca em cascata da FIPE (marca → modelo → ano), que é gratuita.
 
@@ -175,6 +192,7 @@ Todas as rotas começam com `/api`. As rotas da oficina e do portal exigem o cab
 | Vistoria 3D | `GET /ordens/:id/avarias/sugestao?zona=&tipo=&gravidade=`, `POST /ordens/:id/avarias`, `PUT\|DELETE /ordens/:id/avarias/:avaria`, `POST /ordens/:id/avarias/orcamento`, `GET /catalogo`, `PUT /catalogo/:id` (admin) | equipe |
 | Mensagens | `GET /mensagens`, `POST /mensagens/:id/enviada`, `POST /mensagens/:id/reenviar` | equipe |
 | Gestão | `GET /relatorios/painel`, `/equipe`, `GET /integracoes`, `POST /integracoes/teste-email\|teste-whatsapp` | admin |
+| Webhook | `GET\|POST /webhooks/whatsapp` | Meta (token de verificação e assinatura) |
 | Portal | `GET /portal/resumo`, `GET /portal/ordens/:id`, `POST /portal/ordens/:id/resposta` | cliente |
 | Link público | `GET /publico/ordens/:codigo`, `POST /publico/ordens/:codigo/resposta` | qualquer um com o link |
 

@@ -165,7 +165,7 @@ export function Cabecalho({ titulo, sub, children }) {
         <h1 className="text-[28px] sm:text-[32px] font-extrabold tracking-[-0.02em] leading-tight">{titulo}</h1>
         {sub && <p className="text-tinta-2 mt-1">{sub}</p>}
       </div>
-      {children && <div className="flex flex-wrap gap-2.5">{children}</div>}
+      {children && <div className="flex flex-wrap gap-2.5 max-w-full">{children}</div>}
     </div>
   )
 }

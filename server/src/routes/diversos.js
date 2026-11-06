@@ -7,7 +7,7 @@ const fipe = require('../services/fipe');
 const envio = require('../services/envio');
 const relatorios = require('../services/relatorios');
 const config = require('../config');
-const { rota, naoEncontrado, requisicaoInvalida, proibido, conflito } = require('../errors');
+const { HttpError, rota, naoEncontrado, requisicaoInvalida, proibido, conflito } = require('../errors');
 
 // ------------------------------------------------------------- mensagens
 const mensagens = express.Router();
@@ -17,11 +17,13 @@ mensagens.get('/', rota((req, res) => {
   const p = [];
   if (req.query.status) { where.push('m.status = ?'); p.push(req.query.status); }
   if (req.query.canal) { where.push('m.canal = ?'); p.push(req.query.canal); }
-  if (req.usuario.papel === 'mecanico') { where.push('(o.mecanico_id IS NULL OR o.mecanico_id = ?)'); p.push(req.usuario.id); }
+  if (req.query.origem === 'teste') where.push('m.ordem_id IS NULL');
+  // Os testes de Integrações são só do admin
+  if (req.usuario.papel === 'mecanico') { where.push('(m.ordem_id IS NOT NULL AND (o.mecanico_id IS NULL OR o.mecanico_id = ?))'); p.push(req.usuario.id); }
   res.json(db.prepare(
     `SELECT m.*, c.nome AS cliente_nome, v.placa, e.tipo AS etapa_tipo
-       FROM mensagens m JOIN ordens_servico o ON o.id = m.ordem_id
-       JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id
+       FROM mensagens m LEFT JOIN ordens_servico o ON o.id = m.ordem_id
+       LEFT JOIN veiculos v ON v.id = o.veiculo_id LEFT JOIN clientes c ON c.id = v.cliente_id
        LEFT JOIN etapas e ON e.id = m.etapa_id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY m.id DESC LIMIT 300`
   ).all(...p));
@@ -37,12 +39,30 @@ mensagens.post('/:id/reenviar', rota(async (req, res) => {
   const m = db.prepare("SELECT * FROM mensagens WHERE id = ? AND direcao = 'saida'").get(req.params.id);
   if (!m) throw naoEncontrado('Mensagem');
   if (m.link_envio) throw conflito('Esta mensagem é enviada manualmente pelo WhatsApp.');
-  db.prepare("UPDATE mensagens SET status = 'pendente', erro = NULL WHERE id = ?").run(m.id);
-  const o = db.prepare('SELECT o.codigo_publico, c.nome FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id WHERE o.id = ?').get(m.ordem_id);
-  const link = `${config.appUrl()}/acompanhar/${o.codigo_publico}`;
-  await envio.despachar(m.id, { email: { link, titulo: m.assunto }, parametros: [o.nome.split(' ')[0], m.conteudo.split('\n')[0], link] });
+  if (!m.ordem_id && req.usuario.papel !== 'admin') throw proibido();
+  db.prepare("UPDATE mensagens SET status = 'pendente', erro = NULL, erro_codigo = NULL, id_externo = NULL, status_entrega = NULL, status_entrega_em = NULL WHERE id = ?").run(m.id);
+  if (!m.ordem_id) {
+    await envio.despachar(m.id, extraTeste());
+  } else {
+    const o = db.prepare('SELECT o.codigo_publico, c.nome FROM ordens_servico o JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id WHERE o.id = ?').get(m.ordem_id);
+    const link = `${config.appUrl()}/acompanhar/${o.codigo_publico}`;
+    await envio.despachar(m.id, { email: { link, titulo: m.assunto }, parametros: [o.nome.split(' ')[0], m.conteudo.split('\n')[0], link] });
+  }
   res.json(db.prepare('SELECT * FROM mensagens WHERE id = ?').get(m.id));
 }));
+
+// Testes de Ajustes > Integrações: ficam guardados em mensagens, sem OS, para acompanhar o status na tela Mensagens
+const extraTeste = () => ({
+  email: { titulo: 'Envio de e-mail funcionando' },
+  parametros: ['Teste', 'o envio pelo WhatsApp está funcionando.', config.appUrl()],
+});
+async function enviarTeste(canal, destinatario, assunto, conteudo) {
+  const { lastInsertRowid: id } = db.prepare("INSERT INTO mensagens (canal, direcao, destinatario, assunto, conteudo) VALUES (?, 'saida', ?, ?, ?)").run(canal, destinatario, assunto, conteudo);
+  await envio.despachar(id, extraTeste());
+  const m = db.prepare('SELECT * FROM mensagens WHERE id = ?').get(id);
+  if (m.status === 'falhou') throw new HttpError(502, m.erro);
+  return m;
+}
 
 // ------------------------------------------------------------- FIPE (proxy)
 const fipeR = express.Router();
@@ -74,14 +94,16 @@ admin.get('/integracoes', auth.equipe, rota((req, res) => res.json({ ...config.s
 admin.post('/integracoes/teste-email', auth.somenteAdmin, rota(async (req, res) => {
   if (!config.status().email.ativo) throw requisicaoInvalida('Configure o SMTP no .env primeiro.');
   const para = req.body.para || req.usuario.email;
-  const id = await envio.enviarEmail({ para, assunto: 'Teste de e-mail — OficinaStatus', texto: 'Se você recebeu esta mensagem, o envio de e-mails está funcionando.', titulo: 'Envio de e-mail funcionando' });
-  res.json({ ok: true, para, id });
+  const m = await enviarTeste('email', para, 'Teste de e-mail — OficinaStatus', 'Se você recebeu esta mensagem, o envio de e-mails está funcionando.');
+  res.json({ ok: true, para, id: m.id_externo, mensagem_id: m.id });
 }));
 admin.post('/integracoes/teste-whatsapp', auth.somenteAdmin, rota(async (req, res) => {
   if (!config.status().whatsapp.ativo) throw requisicaoInvalida('Configure WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no .env primeiro.');
   if (!req.body.telefone) throw requisicaoInvalida('Informe o número de destino.');
-  const id = await envio.enviarWhatsApp({ telefone: req.body.telefone, texto: 'Teste do OficinaStatus: o envio pelo WhatsApp está funcionando.', parametros: ['Teste', 'o envio pelo WhatsApp está funcionando.', config.appUrl()] });
-  res.json({ ok: true, id });
+  const telefone = String(req.body.telefone).replace(/\D/g, '');
+  if (!telefone) throw requisicaoInvalida('Informe o número de destino.');
+  const m = await enviarTeste('whatsapp', telefone, 'Teste de WhatsApp — OficinaStatus', 'Teste do OficinaStatus: o envio pelo WhatsApp está funcionando.');
+  res.json({ ok: true, id: m.id_externo, mensagem_id: m.id });
 }));
 
 // ------------------------------------------------------------- portal do cliente (logado)

@@ -41,7 +41,8 @@ ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) 
 
 ## Integrações (server/.env, ver .env.example e README)
 
-SMTP, WhatsApp (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE=atualizacao_os com 3 variáveis),
+SMTP, WhatsApp (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE=atualizacao_os com 3 variáveis; webhook de status
+com WHATSAPP_WEBHOOK_VERIFY_TOKEN e WHATSAPP_APP_SECRET, e o túnel expõe só a porta WEBHOOK_PORT, 3334),
 PlacaFipe (PLACA_API_TOKEN), FIPE Parallelum (token opcional). Sem chave, o sistema funciona e deixa a mensagem
 pendente com botão de envio manual (wa.me). Nunca commitar `.env` nem `server/data/`.
 

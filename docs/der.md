@@ -139,6 +139,9 @@ erDiagram
         TEXT erro
         TEXT id_externo "id do SMTP ou da Meta"
         TEXT enviada_em
+        TEXT status_entrega "sent | delivered | read | failed"
+        TEXT status_entrega_em
+        INTEGER erro_codigo "código de erro da Meta"
     }
 ```
 

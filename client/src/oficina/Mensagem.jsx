@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mail, MessageCircle, Check, CircleAlert, Clock, RotateCcw, Send, Inbox } from 'lucide-react'
+import { Mail, MessageCircle, Check, CheckCheck, CircleAlert, Clock, RotateCcw, Send, Inbox } from 'lucide-react'
 import { api } from '../lib/api'
 import { dataHora, telefone } from '../lib/formato'
 import { ETAPAS } from '../lib/etapas'
@@ -17,8 +17,13 @@ export default function Mensagem({ m, aoMudar, mostrarOS }) {
 
   const status = entrada
     ? { texto: 'Resposta do cliente', cor: 'text-ultramar-600', icone: Inbox }
-    : m.status === 'enviada' ? { texto: `Enviada ${dataHora(m.enviada_em)}`, cor: 'text-pronto', icone: Check }
     : m.status === 'falhou' ? { texto: 'Falhou', cor: 'text-recusada', icone: CircleAlert }
+    : m.status_entrega === 'read' ? { texto: `Lida ${dataHora(m.status_entrega_em)}`, cor: 'text-ultramar-600', icone: CheckCheck }
+    : m.status_entrega === 'delivered' ? { texto: `Entregue ${dataHora(m.status_entrega_em)}`, cor: 'text-pronto', icone: CheckCheck }
+    : m.status_entrega === 'sent' ? { texto: `Enviada ${dataHora(m.status_entrega_em)}`, cor: 'text-pronto', icone: Check }
+    // A Meta aceitou o pedido, mas ainda não confirmou o envio pelo webhook
+    : m.status === 'enviada' && m.canal === 'whatsapp' && m.id_externo ? { texto: `Aceita pela Meta ${dataHora(m.enviada_em)}, sem confirmação`, cor: 'text-aprovacao', icone: Clock }
+    : m.status === 'enviada' ? { texto: `Enviada ${dataHora(m.enviada_em)}`, cor: 'text-pronto', icone: Check }
     : { texto: m.link_envio ? 'Para enviar' : 'Enviando…', cor: 'text-aprovacao', icone: Clock }
 
   async function manual() {
@@ -37,14 +42,15 @@ export default function Mensagem({ m, aoMudar, mostrarOS }) {
     <li className={`rounded-2xl border p-4 ${entrada ? 'bg-ultramar-50 border-ultramar-100' : m.status === 'falhou' ? 'bg-erro-bg border-erro-borda' : m.status === 'pendente' && m.link_envio ? 'bg-alerta-bg border-alerta-borda' : 'bg-superficie border-linha'}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
         <span className={`grid place-items-center size-7 rounded-lg ${m.canal === 'email' ? 'bg-ultramar-100 text-ultramar-700' : entrada ? 'bg-superficie text-ultramar-600' : 'bg-ok-bg text-ok'}`}><Icone className="size-4" /></span>
-        {mostrarOS && <><Placa placa={m.placa} tamanho="p" /><Link to={`/oficina/ordens/${m.ordem_id}`} className="font-bold text-ultramar-600">OS {m.ordem_id}</Link><span className="font-semibold">{m.cliente_nome}</span></>}
+        {!m.ordem_id && <span className="rounded-full bg-fundo text-tinta-2 font-bold px-2.5 py-0.5">Teste</span>}
+        {mostrarOS && m.ordem_id && <><Placa placa={m.placa} tamanho="p" /><Link to={`/oficina/ordens/${m.ordem_id}`} className="font-bold text-ultramar-600">OS {m.ordem_id}</Link><span className="font-semibold">{m.cliente_nome}</span></>}
         <span className="font-semibold text-tinta-2">{entrada ? 'Cliente' : m.canal === 'email' ? m.destinatario : `WhatsApp ${telefone(m.destinatario)}`}</span>
         {m.etapa_tipo && <span className="text-tinta-3">{ETAPAS.find((e) => e.tipo === m.etapa_tipo)?.nome}</span>}
         <span className={`ml-auto inline-flex items-center gap-1 font-bold ${status.cor}`}><status.icone className="size-3.5" />{status.texto}</span>
       </div>
       {m.assunto && !entrada && <p className="font-bold mt-3">{m.assunto}</p>}
       <p className="text-[14.5px] text-tinta-2 whitespace-pre-line mt-1 max-w-[75ch]">{m.conteudo}</p>
-      {m.status === 'falhou' && <p className="text-[13px] text-erro mt-2">Motivo: {m.erro}</p>}
+      {m.status === 'falhou' && <p className="text-[13px] text-erro mt-2">Motivo: {m.erro}{m.erro_codigo ? ` (código ${m.erro_codigo})` : ''}</p>}
       <div className="flex gap-2 mt-3 empty:hidden">
         {m.link_envio && !entrada && (
           <Botao as="a" href={m.link_envio} target="_blank" rel="noreferrer" variante={m.status === 'enviada' ? 'secundario' : 'whats'} tamanho="p" icone={Send} onClick={manual}>

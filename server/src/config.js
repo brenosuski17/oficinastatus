@@ -40,6 +40,8 @@ const config = {
     versao: env('WHATSAPP_API_VERSION', 'v21.0'),
     template: env('WHATSAPP_TEMPLATE'),
     idioma: env('WHATSAPP_TEMPLATE_IDIOMA', 'pt_BR'),
+    webhookToken: env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
+    appSecret: env('WHATSAPP_APP_SECRET'),
   }),
   placa: () => ({
     url: env('PLACA_API_URL', 'https://api.placafipe.com.br').replace(/\/$/, ''),
@@ -59,7 +61,7 @@ config.status = () => {
     whatsapp: {
       ativo: Boolean(w.token && w.phoneNumberId),
       detalhe: w.token && w.phoneNumberId
-        ? `API oficial da Meta (${w.versao})${w.template ? `, modelo "${w.template}"` : ', texto livre (janela de 24h)'}`
+        ? `API oficial da Meta (${w.versao})${w.template ? `, modelo "${w.template}"` : ', texto livre (janela de 24h)'}, webhook de status ${w.webhookToken && w.appSecret ? 'configurado' : 'sem configurar'}`
         : 'Sem a API, as mensagens ficam prontas para envio com um clique pelo WhatsApp Web',
     },
     placa: { ativo: Boolean(config.placa().token), detalhe: config.placa().token ? 'PlacaFipe configurada' : 'Defina PLACA_API_TOKEN para preencher o veículo pela placa' },

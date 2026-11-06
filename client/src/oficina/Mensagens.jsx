@@ -1,20 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { MessagesSquare } from 'lucide-react'
 import { api } from '../lib/api'
 import { Cabecalho, ErroCarga, Esqueleto, Vazio, useDados } from '../ui/base'
 import Mensagem from './Mensagem'
 
-const FILTROS = [['', 'Todas'], ['pendente', 'Para enviar'], ['falhou', 'Com falha'], ['enviada', 'Enviadas'], ['recebida', 'Respostas']]
+const FILTROS = [['', 'Todas'], ['pendente', 'Para enviar'], ['falhou', 'Com falha'], ['enviada', 'Enviadas'], ['recebida', 'Respostas'], ['teste', 'Testes']]
 
 export default function Mensagens() {
   const [status, setStatus] = useState('')
-  const { dados, erro, carregando, recarregar } = useDados(() => api.mensagens({ status }), [status])
+  const { dados, erro, carregando, recarregar } = useDados(() => api.mensagens(status === 'teste' ? { origem: 'teste' } : { status }), [status])
+
+  // Os status de entrega chegam depois, pelo webhook da Meta
+  useEffect(() => {
+    const t = setInterval(recarregar, 15000)
+    return () => clearInterval(t)
+  }, [recarregar])
 
   return (
     <>
       <Cabecalho titulo="Mensagens" sub="Avisos de cada etapa enviados aos clientes, com o resultado real de cada envio.">
-        <div className="flex gap-1 rounded-2xl bg-trilho p-1 overflow-x-auto" role="tablist">
+        <div className="flex gap-1 rounded-2xl bg-trilho p-1 overflow-x-auto max-w-full" role="tablist">
           {FILTROS.map(([v, n]) => (
             <button key={v} role="tab" aria-selected={status === v} onClick={() => setStatus(v)}
               className={`relative h-9 px-3.5 rounded-xl text-[14px] font-bold whitespace-nowrap ${status === v ? 'text-tinta' : 'text-tinta-3 hover:text-tinta-2'}`}>
