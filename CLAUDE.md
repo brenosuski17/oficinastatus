@@ -21,6 +21,7 @@ npm run webhook             # sobe o cloudflared e registra a URL no Telegram (c
 npm run dev                 # API em :3333 + Vite em :5173
 npm test --prefix server    # testes de integração (node:test), devem passar sempre; usam um schema descartável
 npm run build               # build de produção do client (o server serve client/dist)
+npm run lint                # ESLint em server e client; roda no CI (.github/workflows/ci.yml) com os testes e o build
 docker compose up --build   # ambiente completo: aplicação em :3333 + PostgreSQL
 ```
 
@@ -68,5 +69,5 @@ E-mails e registros do sistema ficam em `comunicacoes`, e a view `historico_mens
 ## Convenções
 
 - Commits em português, autor brenosuski17.
-- Antes de concluir uma mudança: `npm test --prefix server` e `npm run build`.
+- Antes de concluir uma mudança: `npm run lint`, `npm test --prefix server` e `npm run build`.
 - Mudanças visuais: conferir no navegador, em desktop e celular.

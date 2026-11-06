@@ -5,7 +5,7 @@ import { Plus, Search, Check, X, Trash2, Clock, ArrowLeft } from 'lucide-react'
 import { api } from '../lib/api'
 import { moeda } from '../lib/formato'
 import { useToast } from '../ui/Toast'
-import { ZONAS, TIPOS, GRAVIDADES, DICA_GRAVIDADE, corGravidade, formatarTempo } from './zonas'
+import { ZONAS, TIPOS, GRAVIDADES, DICA_GRAVIDADE, formatarTempo } from './zonas'
 
 export function Chip({ ativo, onClick, children, cor, className = '' }) {
   return (

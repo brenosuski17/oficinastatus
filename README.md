@@ -46,6 +46,7 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 | Ambiente | Docker Compose (aplicação + PostgreSQL) |
 | Front-end | React 19, Vite, Tailwind CSS 4, Motion (animações), Recharts, Lucide, Three.js + React Three Fiber (vistoria 3D) |
 | APIs externas | [FIPE da Parallelum](https://github.com/parallelum/fipe-go) · [PlacaFipe](https://doc.placafipe.com.br/api/getplaca.html) · SMTP · [Telegram Bot API](https://core.telegram.org/bots/api) |
+| Qualidade | ESLint e GitHub Actions (lint, testes e build a cada push e pull request) |
 | Testes | `node:test`, com servidores SMTP e HTTP locais que recebem as mesmas requisições que os serviços reais e um schema descartável do PostgreSQL |
 
 ## Como rodar
@@ -85,6 +86,8 @@ Abra **http://localhost:5173**. O `npm run dev` e a aplicação do Compose usam 
 Para rodar sem Docker como em produção, com um único servidor entregando a API e o site: `npm run build`, `npm run migrate` e depois `npm start`. Acesse http://localhost:3333 e ajuste `APP_URL` no `.env`.
 
 Testes automatizados: `npm test --prefix server`, com o PostgreSQL do Compose no ar. Cada arquivo de teste usa um schema próprio, apagado no final, sem tocar nos seus dados. Para usar outro servidor, defina `TEST_DATABASE_URL`.
+
+Lint: `npm run lint` (ESLint). A cada push e pull request, o [GitHub Actions](.github/workflows/ci.yml) roda o lint, os testes com um serviço PostgreSQL e o build do site.
 
 ### Banco de dados e migrations
 
