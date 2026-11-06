@@ -13,6 +13,7 @@ COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY server/src ./src
 COPY server/migrations ./migrations
+COPY server/scripts ./scripts
 COPY --from=site /app/client/dist /app/client/dist
 RUN mkdir -p data && chown -R node:node data
 USER node

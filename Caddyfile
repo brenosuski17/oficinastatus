@@ -1,0 +1,6 @@
+# HTTPS automático: o Caddy pede e renova o certificado no Let's Encrypt.
+# Exige o DNS do domínio apontando para esta VM e as portas 80 e 443 abertas.
+{$DOMINIO} {
+	encode gzip
+	reverse_proxy app:3333
+}

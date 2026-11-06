@@ -1,0 +1,36 @@
+# Produção: só a aplicação e o proxy HTTPS. O banco é o PostgreSQL gerenciado do Azure.
+# Na VM: docker compose --env-file server/.env -f docker-compose.prod.yml up -d --build
+name: oficinastatus-prod
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - server/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL no server/.env, com o banco gerenciado e sslmode=require}
+      APP_URL: https://${DOMINIO:?Defina DOMINIO no server/.env}
+      PORT: 3333
+    volumes:
+      - dados_app:/app/server/data  # fotos das OS e segredo dos logins
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMINIO: ${DOMINIO:?Defina DOMINIO no server/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_dados:/data     # certificados: sem isto, cada reinício pede um novo ao Let's Encrypt
+      - caddy_config:/config
+
+volumes:
+  dados_app:
+  caddy_dados:
+  caddy_config:
