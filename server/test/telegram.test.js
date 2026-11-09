@@ -380,6 +380,35 @@ test('npm run webhook espera o túnel responder pelo endereço público', async 
   }
 });
 
+test('npm run webhook -- --url aceita o domínio de produção só em HTTPS', () => {
+  const { normalizarDominio } = require('../scripts/webhook');
+  assert.equal(normalizarDominio('oficina.com.br'), 'https://oficina.com.br');
+  assert.equal(normalizarDominio(' https://oficina.com.br/ '), 'https://oficina.com.br');
+  assert.equal(normalizarDominio('https://oficina.com.br/webhook/telegram'), 'https://oficina.com.br');
+  assert.equal(normalizarDominio('https://oficina.com.br:8443/app/'), 'https://oficina.com.br:8443/app');
+  assert.throws(() => normalizarDominio('http://oficina.com.br'), /HTTPS/);
+  assert.throws(() => normalizarDominio(undefined), /Informe o endereço/);
+  assert.throws(() => normalizarDominio('--outra-opcao'), /Informe o endereço/);
+  assert.throws(() => normalizarDominio('localhost'), /inválido/);
+});
+
+test('npm run webhook -- --url confere se o domínio entrega o webhook antes de registrar', async () => {
+  const http = require('node:http');
+  const { conferirDominio } = require('../scripts/webhook');
+  let status = 401;
+  const site = http.createServer((req, res) => { res.writeHead(req.url === '/webhook/telegram' ? status : 404); res.end(); });
+  await new Promise((r) => site.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${site.address().port}`;
+  try {
+    await conferirDominio(base);
+    status = 502; // Caddy no ar, aplicação parada
+    await assert.rejects(conferirDominio(base), /respondeu 502/);
+  } finally {
+    site.close();
+  }
+  await assert.rejects(conferirDominio(base), /não respondeu/);
+});
+
 test('npm run webhook registra a URL com o segredo e só os updates necessários', async () => {
   const { extrairUrl, registrar } = require('../scripts/webhook');
   assert.equal(extrairUrl('INF |  https://abc-def-123.trycloudflare.com  |'), 'https://abc-def-123.trycloudflare.com');

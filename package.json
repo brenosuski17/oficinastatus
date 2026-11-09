@@ -7,7 +7,7 @@
     "dev": "concurrently -n api,web -c yellow,blue \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "migrate": "npm run migrate --prefix server",
     "seed": "npm run seed --prefix server",
-    "webhook": "npm run webhook --prefix server",
+    "webhook": "npm run webhook --prefix server --",
     "build": "npm run build --prefix client",
     "lint": "eslint .",
     "start": "npm start --prefix server"

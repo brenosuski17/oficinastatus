@@ -1,5 +1,6 @@
 // npm run webhook: sobe o túnel do cloudflared e registra a URL dele no Telegram (setWebhook).
 // Em produção, sem túnel: npm run webhook -- --url https://seu-dominio
+// Na VM, dentro do container: docker compose ... exec app node scripts/webhook.js --url https://seu-dominio
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -32,6 +33,37 @@ async function aguardarTunel(base, { limiteMs = 120000, intervaloMs = 3000 } = {
   }
 }
 
+/**
+ * Endereço de produção: aceita "dominio.com", "https://dominio.com/" ou a URL completa do webhook.
+ * O Telegram só chama webhooks em HTTPS, então http:// é recusado.
+ */
+function normalizarDominio(texto) {
+  const valor = String(texto ?? '').trim();
+  if (!valor || valor.startsWith('--')) throw new Error('Informe o endereço: npm run webhook -- --url https://seu-dominio');
+  if (/^http:\/\//i.test(valor)) throw new Error('O Telegram só aceita webhook em HTTPS. Use https://.');
+  let url;
+  try {
+    url = new URL(/^https:\/\//i.test(valor) ? valor : `https://${valor}`);
+  } catch {
+    throw new Error(`Endereço inválido: ${valor}`);
+  }
+  if (!url.hostname.includes('.')) throw new Error(`Endereço inválido: ${valor}`);
+  let caminho = url.pathname.replace(/\/+$/, '');
+  if (caminho.endsWith(CAMINHO)) caminho = caminho.slice(0, -CAMINHO.length);
+  return `${url.origin}${caminho}`;
+}
+
+/** Confere se o domínio já entrega o webhook: sem o segredo, a aplicação responde 401. */
+async function conferirDominio(base) {
+  let r;
+  try {
+    r = await fetch(`${base}${CAMINHO}`, { method: 'POST', signal: AbortSignal.timeout(10000) });
+  } catch (e) {
+    throw new Error(`${base} não respondeu (${e.cause?.code || e.name}). Confira o DNS, as portas 80 e 443 e se a aplicação está no ar.`);
+  }
+  if (r.status !== 401) throw new Error(`${base}${CAMINHO} respondeu ${r.status}, mas o esperado era 401. O domínio aponta para esta aplicação?`);
+}
+
 // Token inválido ou inexistente não melhora com novas tentativas
 const erroDefinitivo = (e) => e.codigo === 401 || e.codigo === 404;
 
@@ -54,6 +86,7 @@ async function registrar(base, { tentativas = 8, intervaloMs = 5000 } = {}) {
 async function mostrarResultado(url) {
   const info = await telegram.lerWebhook();
   console.log(`\nWebhook registrado: ${url}`);
+  if (info.url !== url) console.log(`  Atenção: o getWebhookInfo mostra ${info.url || 'nenhuma URL'}.`);
   console.log(`  Pendentes: ${info.pending_update_count ?? 0}${info.last_error_message ? ` · Último erro: ${info.last_error_message}` : ''}`);
 }
 
@@ -89,9 +122,14 @@ function subirTunel() {
 
 async function principal() {
   exigirConfiguracao();
+  const comIgual = process.argv.find((a) => a.startsWith('--url='));
   const argumento = process.argv.indexOf('--url');
-  if (argumento > 0) {
-    const url = await registrar(process.argv[argumento + 1] || '');
+  if (comIgual || argumento > 0) {
+    // Produção: domínio fixo com HTTPS, sem túnel
+    const base = normalizarDominio(comIgual ? comIgual.slice('--url='.length) : process.argv[argumento + 1]);
+    console.log(`Conferindo ${base}${CAMINHO}...`);
+    await conferirDominio(base);
+    const url = await registrar(base, { tentativas: 3, intervaloMs: 5000 });
     await mostrarResultado(url);
     return;
   }
@@ -114,7 +152,7 @@ async function principal() {
   tunel.on('exit', () => process.exit(1));
 }
 
-module.exports = { extrairUrl, aguardarTunel, registrar };
+module.exports = { extrairUrl, aguardarTunel, normalizarDominio, conferirDominio, registrar };
 
 if (require.main === module) {
   principal().catch((e) => { console.error(`Erro: ${e.message}`); process.exit(1); });
