@@ -7,13 +7,23 @@ Sistema de acompanhamento de ordens de serviço para oficina mecânica.
 
 **Alunos:** Arthur Svidzinski e Breno Suski
 
-| Área da oficina | Área do cliente (celular) |
+| Entrar | Visão geral |
 |---|---|
-| ![Inspeção 3D](docs/telas/vistoria.png) | ![Orçamento no celular](docs/telas/cliente-orcamento.png) |
+| ![Tela de login](docs/telas/entrar.png) | ![Visão geral da oficina](docs/telas/painel.png) |
 
-| Visão geral | Veículos | Orçamentos |
-|---|---|---|
-| ![Visão geral](docs/telas/painel.png) | ![Veículos](docs/telas/veiculos.png) | ![Orçamentos](docs/telas/orcamentos.png) |
+| Pátio | Inspeção 3D |
+|---|---|
+| ![Pátio com os carros em cada etapa](docs/telas/patio.png) | ![Inspeção 3D com as avarias marcadas](docs/telas/vistoria.png) |
+
+| Orçamentos | Mensagens |
+|---|---|
+| ![Lista de orçamentos](docs/telas/orcamentos.png) | ![Mensagens enviadas aos clientes](docs/telas/mensagens.png) |
+
+| Portal do cliente | Acompanhamento pelo link |
+|---|---|
+| ![Portal do cliente com o orçamento para aprovar](docs/telas/cliente-portal.png) | ![Página pública de acompanhamento da OS](docs/telas/acompanhamento.png) |
+
+Prints de desktop (1512×945) com os dados do `npm run seed`. A área do cliente também foi feita para o celular: veja `docs/telas/cliente-*.png`.
 
 ## Funcionalidades
 
