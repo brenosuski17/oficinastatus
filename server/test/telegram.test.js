@@ -341,6 +341,45 @@ test('excluir o cliente apaga vínculo e mensagens', async () => {
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM mensagens WHERE canal_usuario_id = ?').get(canal.id)).n, 0);
 });
 
+test('npm run webhook repete enquanto o Telegram não encontra o endereço, mas desiste de token inválido', async () => {
+  const { registrar } = require('../scripts/webhook');
+  const chamadas = () => falso.chamadas.filter((c) => c.metodo === 'setWebhook').length;
+  const semDns = { error_code: 400, description: 'Bad Request: bad webhook: Failed to resolve host' };
+
+  falso.errosPorMetodo.setWebhook = [semDns, semDns];
+  let antes = chamadas();
+  await registrar('https://novo.trycloudflare.com', { tentativas: 5, intervaloMs: 1 });
+  assert.equal(chamadas() - antes, 3);
+
+  falso.errosPorMetodo.setWebhook = [semDns, semDns, semDns];
+  antes = chamadas();
+  await assert.rejects(registrar('https://novo.trycloudflare.com', { tentativas: 2, intervaloMs: 1 }), /resolve host/);
+  assert.equal(chamadas() - antes, 2);
+  falso.errosPorMetodo.setWebhook = [];
+
+  falso.errosPorMetodo.setWebhook = [{ error_code: 401, description: 'Unauthorized' }];
+  antes = chamadas();
+  await assert.rejects(registrar('https://novo.trycloudflare.com', { tentativas: 5, intervaloMs: 1 }), /Unauthorized/);
+  assert.equal(chamadas() - antes, 1);
+});
+
+test('npm run webhook espera o túnel responder pelo endereço público', async () => {
+  const http = require('node:http');
+  const { aguardarTunel } = require('../scripts/webhook');
+  let pedidos = 0;
+  const tunel = http.createServer((req, res) => { pedidos++; res.writeHead(pedidos < 3 ? 530 : 401); res.end(); });
+  await new Promise((r) => tunel.listen(0, '127.0.0.1', r));
+  const endereco = `http://127.0.0.1:${tunel.address().port}`;
+  try {
+    await aguardarTunel(endereco, { intervaloMs: 1 });
+    assert.equal(pedidos, 3);
+    pedidos = -1000; // continua no 530
+    await assert.rejects(aguardarTunel(endereco, { limiteMs: 20, intervaloMs: 1 }), /não ficou acessível/);
+  } finally {
+    tunel.close();
+  }
+});
+
 test('npm run webhook registra a URL com o segredo e só os updates necessários', async () => {
   const { extrairUrl, registrar } = require('../scripts/webhook');
   assert.equal(extrairUrl('INF |  https://abc-def-123.trycloudflare.com  |'), 'https://abc-def-123.trycloudflare.com');

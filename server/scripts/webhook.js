@@ -8,6 +8,7 @@ const config = require('../src/config');
 const telegram = require('../src/services/telegram');
 
 const CAMINHO = '/webhook/telegram';
+const ESPERA_DNS_MS = 20000;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 const extrairUrl = (texto) => /https:\/\/[a-z0-9-]+\.trycloudflare\.com/.exec(texto)?.[0];
 
@@ -18,7 +19,23 @@ function exigirConfiguracao() {
   return t;
 }
 
-/** Registra a URL, tentando de novo: um túnel novo pode levar alguns segundos para ser encontrado pelo Telegram. */
+/** Espera o túnel responder pelo endereço público. O 530 é da Cloudflare, enquanto o túnel não está pronto. */
+async function aguardarTunel(base, { limiteMs = 120000, intervaloMs = 3000 } = {}) {
+  const limite = Date.now() + limiteMs;
+  for (;;) {
+    try {
+      const r = await fetch(`${base}${CAMINHO}`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+      if (r.status !== 530) return;
+    } catch { /* o endereço ainda não foi publicado no DNS */ }
+    if (Date.now() >= limite) throw new Error('O túnel não ficou acessível pelo endereço público.');
+    await esperar(intervaloMs);
+  }
+}
+
+// Token inválido ou inexistente não melhora com novas tentativas
+const erroDefinitivo = (e) => e.codigo === 401 || e.codigo === 404;
+
+/** Registra a URL, tentando de novo: o Telegram pode levar um tempo para encontrar um endereço novo. */
 async function registrar(base, { tentativas = 8, intervaloMs = 5000 } = {}) {
   const { webhookSecret } = exigirConfiguracao();
   const url = `${base.replace(/\/$/, '')}${CAMINHO}`;
@@ -27,7 +44,7 @@ async function registrar(base, { tentativas = 8, intervaloMs = 5000 } = {}) {
       await telegram.registrarWebhook(url, webhookSecret);
       return url;
     } catch (e) {
-      if (i >= tentativas) throw e;
+      if (erroDefinitivo(e) || i >= tentativas) throw e;
       console.log(`  O Telegram ainda não aceitou a URL (${e.message}). Nova tentativa em ${intervaloMs / 1000} s...`);
       await esperar(intervaloMs);
     }
@@ -80,14 +97,24 @@ async function principal() {
   }
   console.log('Subindo o túnel do cloudflared...');
   const { url: base, tunel } = await subirTunel();
-  await avisarSeServidorParado();
-  const url = await registrar(base);
-  await mostrarResultado(url);
+  try {
+    await avisarSeServidorParado();
+    console.log(`Esperando o endereço ficar público: ${base}`);
+    await aguardarTunel(base);
+    // Chamar o Telegram cedo demais faz ele guardar por um tempo que o endereço não existe
+    await esperar(ESPERA_DNS_MS);
+    const url = await registrar(base, { tentativas: 12, intervaloMs: 15000 });
+    await mostrarResultado(url);
+  } catch (e) {
+    tunel.removeAllListeners('exit');
+    tunel.kill();
+    throw e;
+  }
   console.log('\nO túnel fica ativo enquanto este comando rodar. Ao reiniciar, a URL muda e é registrada de novo. Ctrl+C para sair.');
   tunel.on('exit', () => process.exit(1));
 }
 
-module.exports = { extrairUrl, registrar };
+module.exports = { extrairUrl, aguardarTunel, registrar };
 
 if (require.main === module) {
   principal().catch((e) => { console.error(`Erro: ${e.message}`); process.exit(1); });

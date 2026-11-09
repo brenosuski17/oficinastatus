@@ -34,10 +34,11 @@ async function criarBancoDeTeste() {
 
 /**
  * Servidor falso da Bot API: recebe as mesmas requisições que a real.
- * `respostas` guarda erros a devolver no próximo sendMessage; `atrasoMs` atrasa o answerCallbackQuery.
+ * `respostas` guarda erros a devolver no próximo sendMessage; `errosPorMetodo`, os de outros métodos;
+ * `atrasoMs` atrasa o answerCallbackQuery.
  */
 async function servidorTelegram() {
-  const falso = { chamadas: [], respostas: [], atrasoMs: 0, proximoId: 1000 };
+  const falso = { chamadas: [], respostas: [], errosPorMetodo: {}, atrasoMs: 0, proximoId: 1000 };
   const enviadas = () => falso.chamadas.filter((c) => c.metodo === 'sendMessage');
   falso.enviadas = enviadas;
   const srv = http.createServer((req, res) => {
@@ -51,6 +52,8 @@ async function servidorTelegram() {
       const dados = corpo ? JSON.parse(corpo) : {};
       if (metodo === 'answerCallbackQuery' && falso.atrasoMs) await new Promise((r) => setTimeout(r, falso.atrasoMs));
       falso.chamadas.push({ metodo, corpo: dados });
+      const erroDoMetodo = falso.errosPorMetodo[metodo]?.shift();
+      if (erroDoMetodo) return json(erroDoMetodo.error_code, { ok: false, ...erroDoMetodo });
       if (metodo === 'sendMessage') {
         const erro = falso.respostas.shift();
         if (erro) return json(erro.error_code, { ok: false, ...erro });

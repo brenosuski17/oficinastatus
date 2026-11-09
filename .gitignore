@@ -6,3 +6,4 @@ server/.env
 client/public/modelos/golf.glb
 *.log
 .DS_Store
+projeto-integrador.pdf
