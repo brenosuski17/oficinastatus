@@ -81,7 +81,13 @@ Abra **http://localhost:5173**. O `npm run dev` e a aplicação do Compose usam 
 - **Sem o seed:** a primeira tela pede para criar a conta do administrador.
 - **Com o seed (demonstração):** use a senha `oficina123` em todas as contas.
   - Oficina: `admin@oficina.com` (administrador), `arthur@oficina.com` e `rafael@oficina.com` (mecânicos).
-  - Clientes: `ana@cliente.com`, `joao@cliente.com` (tem orçamento para aprovar), `marcia@cliente.com`, `luciana@cliente.com` e `fernanda@cliente.com` (OS 16, com vistoria 3D e orçamento gerado pelas avarias).
+  - Clientes: `ana@cliente.com`, `joao@cliente.com` (OS 12, com orçamento para aprovar), `marcia@cliente.com`, `luciana@cliente.com` e `fernanda@cliente.com` (OS 16, com vistoria 3D e orçamento gerado pelas avarias).
+  - No fim, o seed lista as OS aguardando aprovação e os links públicos `/acompanhar/...` de cada uma.
+
+**Aprovar ao vivo na apresentação.** As OS 12 (João, Strada) e 16 (Fernanda, Polo) ficam na etapa de aprovação, e o `server/test/seed.test.js` confere os três caminhos:
+1. **Pelo portal:** entre como `fernanda@cliente.com`, abra a OS 16, veja as avarias no carro 3D e toque em **Aprovar**. A OS passa para a etapa de execução, e a tela da oficina mostra a mudança.
+2. **Pelo link, sem login:** abra o link `/acompanhar/...` que o seed mostrou, no celular, e aprove por ali.
+3. **Pelo Telegram, com o bot configurado:** os avisos do seed vão para chats fictícios. Ao subir o servidor, os da OS 12 falham com *chat not found* e aparecem na tela Mensagens. Entre como `joao@cliente.com`, toque em **Vincular outra conta** (o seed já deixa um vínculo fictício) e mande o `/start` no seu celular. Depois, como admin, em *Mensagens*, toque em **Tentar de novo** no orçamento da OS 12. O orçamento chega com os botões, e tocar em **Aprovar** move a OS.
 
 Para rodar sem Docker como em produção, com um único servidor entregando a API e o site: `npm run build`, `npm run migrate` e depois `npm start`. Acesse http://localhost:3333 e ajuste `APP_URL` no `.env`.
 

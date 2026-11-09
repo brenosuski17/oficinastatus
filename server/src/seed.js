@@ -1,7 +1,6 @@
 // Dados de demonstração para a apresentação: `npm run seed`
 // ATENÇÃO: apaga todos os dados do banco. Nenhuma mensagem é enviada durante o seed.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), quiet: true });
-for (const k of ['SMTP_HOST', 'TELEGRAM_TOKEN']) process.env[k] = '';
 
 const bcrypt = require('bcryptjs');
 const db = require('./db');
@@ -144,6 +143,8 @@ const popular = db.transaction(async () => {
   await avarias.gerarOrcamento(o6, mecanicoA);
   await ordens.enviarOrcamento(o6, { previsao_entrega: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) }, admin);
 
+  // Aprovar ao vivo: o2 (João) e o6 (Fernanda) ficam na aprovação. Os avisos do o2 ficam na fila: com o bot real, falham
+  // no chat fictício e podem ser reenviados depois que o Telegram de quem apresenta for vinculado ao João.
   // Os avisos da demonstração aparecem como enviados, menos os das OS o2 e o3, que ficam na fila; quem não tem vínculo fica com a falha registrada
   await db.prepare("UPDATE mensagens SET status = 'enviada', enviada_em = criada_em, id_externo = id::text WHERE status = 'enfileirada' AND ordem_id NOT IN (?, ?)").run(o2, o3);
   await db.exec(`UPDATE mensagens m SET status = 'respondida', respondida_em = m.criada_em
@@ -151,16 +152,36 @@ const popular = db.transaction(async () => {
                     AND EXISTS (SELECT 1 FROM etapas e WHERE e.ordem_id = m.ordem_id AND e.tipo = 'aprovacao' AND e.status IN ('concluida','recusada'))`);
 });
 
+/** OS com o orçamento enviado e esperando a resposta do cliente. */
+const aguardandoAprovacao = () => db.prepare(
+  `SELECT o.id, o.codigo_publico, c.nome AS cliente, u.email, v.modelo, v.placa
+     FROM ordens_servico o JOIN etapas e ON e.ordem_id = o.id AND e.tipo = 'aprovacao' AND e.status = 'em_andamento'
+     JOIN veiculos v ON v.id = o.veiculo_id JOIN clientes c ON c.id = v.cliente_id
+     LEFT JOIN usuarios u ON u.cliente_id = c.id
+    WHERE o.situacao = 'aberta' ORDER BY o.id`
+).all();
+
 async function principal() {
   exigirBancoLocal();
   await migrar();
   await popular();
+  const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const aprovar = (await aguardandoAprovacao()).map((o) =>
+    `    OS ${o.id} · ${o.cliente} (${o.email}) · ${o.modelo.split(' ')[0]} ${o.placa} · ${appUrl}/acompanhar/${o.codigo_publico}`).join('\n');
   console.log(`Banco de demonstração criado.
   Oficina:  admin@oficina.com (admin) · arthur@oficina.com e rafael@oficina.com (mecânicos)
   Clientes: ana@cliente.com, joao@cliente.com, marcia@cliente.com, luciana@cliente.com, fernanda@cliente.com (vistoria 3D)
-  Senha de todos: ${SENHA}`);
+  Senha de todos: ${SENHA}
+  Aguardando aprovação (para o Aprovar ao vivo, pelo portal ou pelo link):
+${aprovar}`);
 }
 
-principal()
-  .catch((e) => { console.error(`Erro no seed: ${e.message || e.code}`); process.exitCode = 1; })
-  .finally(() => db.fechar());
+module.exports = { popular, aguardandoAprovacao, SENHA };
+
+if (require.main === module) {
+  // Nenhum e-mail ou mensagem sai durante o seed
+  for (const k of ['SMTP_HOST', 'TELEGRAM_TOKEN']) process.env[k] = '';
+  principal()
+    .catch((e) => { console.error(`Erro no seed: ${e.message || e.code}`); process.exitCode = 1; })
+    .finally(() => db.fechar());
+}

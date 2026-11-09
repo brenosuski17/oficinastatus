@@ -27,7 +27,8 @@ docker compose --env-file server/.env -f docker-compose.prod.yml up -d --build  
 ```
 
 Contas do seed: admin@oficina.com (admin), arthur@ e rafael@oficina.com (mecânicos),
-ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 16 (Fernanda, Polo) já tem avarias e orçamento enviado.
+ana/joao/marcia/luciana/fernanda@cliente.com (clientes). OS 12 (João, Strada) e OS 16 (Fernanda, Polo, com avarias) ficam
+aguardando aprovação para o Aprovar ao vivo (roteiro no README; `server/test/seed.test.js` garante).
 
 ## Estrutura
 
