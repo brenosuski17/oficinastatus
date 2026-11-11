@@ -246,7 +246,7 @@ export default function Inspecao() {
   const zonaAtiva = modo.tipo === 'peca' ? modo.zona : modo.tipo === 'editor' ? modo.inicial.zona : null
 
   return (
-    <div ref={caixa} className="tema-escuro grid lg:grid-cols-[1fr_420px] lg:h-dvh bg-[#060a1c]">
+    <div ref={caixa} className="tema-escuro grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px] lg:h-dvh bg-[#060a1c]">
       {/* palco */}
       <section className="relative h-[66vh] min-h-[440px] lg:h-full overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,#16225c_0%,#0a1135_50%,#060a1c_100%)]">
         <Carro3D carroceria={o.carroceria} marca={o.marca} cor={o.cor} avarias={o.avarias} rascunho={rascunho} selecionada={modo.tipo === 'editor' ? modo.inicial.id : null}

@@ -113,21 +113,39 @@ A conexão vem de `DATABASE_URL` no `server/.env`. Para usar um banco gerenciado
 
 Para mudar o esquema, crie um novo arquivo numerado em `server/migrations`, como `002_nova_coluna.sql`, e rode `npm run migrate`. Cada arquivo roda uma vez, em ordem, e fica registrado na tabela `schema_migrations`. Não edite uma migration já aplicada: o comando recusa o arquivo alterado. O servidor não sobe se houver migrations pendentes.
 
-### Modelo 3D do Golf (opcional)
+### Modelos 3D
 
-Na inspeção 3D, os hatches da Volkswagen usam o modelo [**Volkswagen Golf GTI (2025)**](https://sketchfab.com/3d-models/volkswagen-golf-gti-2025-84fe6c2b9feb4c8a854d16f3daf33eab), de [geyges](https://sketchfab.com/geyges), no Sketchfab. A licença Free Standard do Sketchfab proíbe redistribuir o arquivo, por isso `client/public/modelos/golf.glb` está no `.gitignore` e não vem com o repositório. Sem ele, o sistema funciona normalmente e esses veículos aparecem com o carro desenhado, como todos os outros.
+A inspeção 3D usa um modelo pronto por carroceria, para todos os veículos dela, de qualquer marca. Os quatro vêm do Sketchfab, com licença Creative Commons que permite redistribuir, por isso estão no repositório e na imagem do Docker, em `client/public/modelos/`. O crédito aparece no canto da tela da inspeção.
 
-Para usar o modelo na sua máquina:
+| Arquivo | Modelo original | Autor | Licença |
+|---|---|---|---|
+| `hatch.glb` | [2025 Volkswagen Golf GTI MK8.5](https://sketchfab.com/3d-models/2025-volkswagen-golf-gti-mk85-de98fb98417547f4904fa24d6be3b269) | [BMW'S Lost Proxy](https://sketchfab.com/Bmws_Lost_Proxy) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| `sedan.glb` | [Toyota Corolla E170 2017](https://sketchfab.com/3d-models/toyota-corolla-e170-2017-d87af59849814c5cb35a0c233f2c2f19) | [Blender Boy](https://sketchfab.com/Blender_Boy1) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| `suv.glb` | [Hyundai Creta 2016](https://sketchfab.com/3d-models/hyundai-creta-2016-46b66ddb3cf846f88f7348e0daec2604) | [marcianozx](https://sketchfab.com/marcianozx) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| `picape.glb` | [Toyota Hilux Revo](https://sketchfab.com/3d-models/toyota-hilux-revo-37c57ebdccbb448e96050f9a75dd0477) | [David_Holiday](https://sketchfab.com/David_Holiday) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 
-1. Com uma conta no Sketchfab, abra a [página do modelo](https://sketchfab.com/3d-models/volkswagen-golf-gti-2025-84fe6c2b9feb4c8a854d16f3daf33eab) e baixe-o no formato original.
-2. Extraia o `.zip`. O arquivo usado é `source/golf_gti_my25_lights_on.glb`.
-3. Depois de `npm run instalar`, gere a versão otimizada:
+**Alterações feitas nos originais:**
+- **Posição e escala:** os modelos foram reposicionados e redimensionados para o comprimento real de cada carro.
+- **Peças:** os modelos foram divididos por peça, para o clique da inspeção e as marcações de avaria.
+- **Pintura:** passou a seguir a cor cadastrada do veículo.
+- **Tamanho dos arquivos:** os modelos foram simplificados, de 17 a 96 MB para 1,5 a 2,5 MB, e as texturas foram convertidas para WebP.
 
-   ```bash
-   node client/scripts/otimizar-golf.mjs caminho/para/golf_gti_my25_lights_on.glb
-   ```
+**Licença das versões alteradas:** a versão alterada do Corolla, `sedan.glb`, continua sob a **CC BY-SA 4.0**, como pede a licença do original. As outras três versões alteradas seguem a CC BY 4.0 dos originais. As licenças foram conferidas pela API do Sketchfab em 11/11/2026.
 
-O script simplifica e comprime o modelo (de cerca de 18 MB para 2,3 MB), separa as peças para o clique da inspeção e grava `client/public/modelos/golf.glb`. Para rodar sem Docker como em produção, gere o arquivo antes do `npm run build`. A imagem do Docker não inclui o modelo, por causa da licença: nela, esses veículos aparecem com o carro desenhado.
+O `golf.glb` antigo, de outro autor e com licença Standard do Sketchfab, que proíbe redistribuir, saiu do sistema e continua fora do repositório e da imagem (`.gitignore` e `.dockerignore`).
+
+Para gerar de novo um modelo a partir do original do Sketchfab:
+```bash
+node client/scripts/inspecionar-modelo.mjs original.glb --materiais   # materiais, tamanhos e caixas, para configurar
+node client/scripts/otimizar-modelo.mjs sedan original.glb            # grava client/public/modelos/sedan.glb
+```
+O `otimizar-modelo.mjs` tem uma configuração por carroceria, com o comprimento real e os materiais de pintura, vidro, luzes e interior. Ele faz quatro coisas:
+- põe o carro nas coordenadas da inspeção, corrigindo o giro do Creta, que vem 3,7° torto no original;
+- separa as rodas, os faróis, as lanternas, os vidros e os retrovisores de cada lado;
+- calcula as medidas usadas para descobrir a peça clicada e as grava em `client/src/vistoria/medidas-modelos.json`;
+- comprime o resultado com meshopt.
+
+O carro desenhado continua como reserva enquanto o modelo carrega ou se o navegador não conseguir abri-lo.
 
 ## Configurando as integrações (`server/.env`)
 
@@ -213,7 +231,7 @@ az postgres flexible-server db create -g rg-oficinastatus -s oficinastatus-db-br
 ```
 
 #### 2. Registro da imagem (ACR Basic)
-A imagem é montada na máquina do grupo e enviada ao registro. O `.dockerignore` deixa de fora o `.env`, o `server/data` e o `golf.glb`, cuja licença proíbe redistribuir.
+A imagem é montada na máquina do grupo e enviada ao registro. O `.dockerignore` deixa de fora o `.env`, o `server/data` e o `golf.glb` antigo, cuja licença proíbe redistribuir. Os quatro modelos 3D com licença Creative Commons entram na imagem (veja [Modelos 3D](#modelos-3d)).
 ```bash
 az provider register -n Microsoft.App --wait
 az provider register -n Microsoft.OperationalInsights --wait
@@ -284,7 +302,14 @@ No Windows, se o comando falhar com `UnicodeEncodeError` por causa do `✔` do l
 ```
 "C:\Program Files\Microsoft SDKs\Azure\CLI2\python.exe" -X utf8 -IBm azure.cli containerapp logs show …
 ```
-**Não rode o seed em produção:** ele apaga os dados e usa a senha `oficina123` em todas as contas.
+**Dados de demonstração na nuvem:** o seed apaga tudo e cria as contas com a senha `oficina123`. Como o banco só é alcançável pela VNet, ele roda dentro do próprio contêiner. Logo depois, troque as senhas de todas as contas:
+```bash
+az containerapp exec -g rg-oficinastatus -n oficinastatus --command "node src/seed.js --forcar"
+```
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\trocar-senhas.ps1 -Url https://oficinastatus.com.br
+```
+O [`deploy/trocar-senhas.ps1`](deploy/trocar-senhas.ps1) entra como admin pela API, por HTTPS, e pede no terminal uma senha nova para cada conta, sem mostrá-la. Para cada conta, ele gera um convite e grava a senha por ele, como faz a tela *Criar senha*. No fim, confere que `oficina123` não entra mais. Em 11/11/2026, o seed rodou na nuvem para a apresentação, e as senhas das 8 contas foram trocadas em seguida.
 
 #### 7. Testes pelo HTTPS (11/11/2026)
 | Teste | Resultado |
@@ -339,7 +364,11 @@ Estimativa com a menor configuração de cada peça. Os preços são de referên
 | Private Endpoint + zona DNS privada | ~US$ 8 |
 | Log Analytics | dentro dos 5 GB grátis |
 
-- **Alerta de gasto:** em *Cost Management → Budgets → + Add*, no escopo da assinatura *Azure subscription 1*, crie um orçamento mensal de US$ 100 com alertas *Actual* em **25 %, 50 % e 100 %**, que equivalem a US$ 25, 50 e 100, como pede o Anexo B.2. Os custos são avaliados a cada 24 horas, então o alerta não é instantâneo ([tutorial](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)).
+- **Alerta de gasto (configurado):** o orçamento `orcamento-oficinastatus` foi criado pelo portal, em *Cost Management → Budgets*, no escopo da **conta de cobrança *breno suski*** (Microsoft Customer Agreement), que contém a assinatura. São **US$ 100 por mês**, de 01/11/2026 a 31/10/2028, com três alertas do tipo *Actual*, em **25 %, 50 % e 100 %** (US$ 25, 50 e 100, como pede o Anexo B.2), enviados por e-mail. Os custos são avaliados a cada 24 horas, então o alerta não é instantâneo ([tutorial](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)). Para conferir pelo CLI:
+  ```bash
+  az rest --method get --url "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/<id da conta>/providers/Microsoft.Consumption/budgets?api-version=2023-05-01"
+  ```
+  O `<id da conta>` sai de `az billing account list`.
 - **Para economizar entre as aulas:**
   ```bash
   az containerapp update -g rg-oficinastatus -n oficinastatus --min-replicas 0   # o app dorme sem acesso
@@ -387,7 +416,7 @@ O app escala para zero com `--min-replicas 0`. Sem réplica rodando, não há co
 - [x] HTTPS válido no endereço do Azure (passo 7)
 - [ ] Domínio próprio, DNS e certificado gerenciado (passo 9)
 - [ ] Webhook do Telegram na URL definitiva (passo 9)
-- [ ] Alerta de gasto configurado
+- [x] Alerta de gasto: orçamento de US$ 100 com alertas de 25 %, 50 % e 100 % (veja *Custo e controle de gasto*)
 - [ ] Prints para o relatório: recursos do grupo, Private Endpoint, banco com acesso público desligado, log das migrations, cadeado no navegador e consumo da assinatura
 
 Fontes: [Azure Container Apps](https://learn.microsoft.com/azure/container-apps/) · [Rede do Container Apps](https://learn.microsoft.com/azure/container-apps/networking) · [Private Link no Flexible Server](https://learn.microsoft.com/azure/postgresql/flexible-server/concepts-networking-private-link) · [Domínio próprio e certificado gerenciado](https://learn.microsoft.com/azure/container-apps/custom-domains-managed-certificates) · [Parar o Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server) · [Azure DNS](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns) · [Orçamentos no Cost Management](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
@@ -429,6 +458,7 @@ oficinastatus/
 │   └── lib/                      # API, login, formatos, etapas
 ├── deploy/
 │   ├── definir-banco-azure.ps1   # grava a DATABASE_URL como secret do Container Apps (pede a senha)
+│   ├── trocar-senhas.ps1         # troca as senhas das contas de produção pela API (pede cada senha)
 │   └── instalar-vm.sh            # caminho 1 (VM), não usado: prepara uma VM Ubuntu com Docker
 ├── docs/deploy/                  # log das migrations no banco da nuvem
 ├── docs/                         # DER, fluxo de estados e telas

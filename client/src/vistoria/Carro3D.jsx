@@ -1,5 +1,5 @@
-// Estúdio 3D da inspeção: hatch da Volkswagen com modelo .glb pronto (ver MODELOS em carrocerias.js); os demais modelados
-// do zero, e o desenho aparece enquanto o modelo carrega ou se ele falhar (o .glb não vem com o repositório).
+// Estúdio 3D da inspeção: um modelo .glb pronto por carroceria (ver MODELOS em carrocerias.js); o carro desenhado
+// aparece enquanto o modelo carrega ou se ele falhar.
 // A lataria é um só bloco; um shader descobre a peça de cada pixel, o que permite acender a peça inteira
 // ao passar o mouse e pintar as peças com avaria pela gravidade.
 import { Component, Suspense, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -273,7 +273,7 @@ const Carro = memo(function Carro({ c, cor, m, refCarro, sevPorZona, realce, rea
 })
 
 // ---------------------------------------------------------------- modelo .glb
-/** Cópia do modelo com a pintura do sistema; cada malha guarda a peça dela (extras gravados pelo otimizar-golf.mjs). */
+/** Cópia do modelo com a pintura do sistema; cada malha guarda a peça dela (extras gravados pelo otimizar-modelo.mjs). */
 function prepararModelo(cena, m) {
   const raiz = cena.clone(true)
   const pecas = []
@@ -581,7 +581,7 @@ export default function Carro3D({
       </div>
 
       {credito && (
-        <p className={`absolute z-10 max-w-[calc(100%-1.5rem)] rounded-md bg-[#050916]/70 px-2 py-0.5 text-right text-[11px] leading-snug text-[#c9d2f0] backdrop-blur ${classeCredito}`}>{credito}</p>
+        <p className={`absolute z-10 max-w-[min(24rem,calc(100%-1.5rem),calc(100vw-2rem))] rounded-md bg-[#050916]/70 px-2 py-0.5 text-right text-[11px] leading-snug text-[#c9d2f0] backdrop-blur ${classeCredito}`}>{credito}</p>
       )}
 
       {/* dica que segue o ponteiro: nome da peça */}

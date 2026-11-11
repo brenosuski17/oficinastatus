@@ -1,4 +1,4 @@
-# Grava a DATABASE_URL de produção como secret do Azure Container Apps, sem a senha passar por arquivo nem pelo histórico.
+﻿# Grava a DATABASE_URL de produção como secret do Azure Container Apps, sem a senha passar por arquivo nem pelo histórico.
 # Uso (PowerShell, com az login feito):  powershell -File deploy\definir-banco-azure.ps1
 param(
   [string]$Grupo = 'rg-oficinastatus',

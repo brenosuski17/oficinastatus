@@ -62,11 +62,16 @@ E-mails e registros do sistema ficam em `comunicacoes`, e a view `historico_mens
 
 ## Próximos passos combinados
 
-- Criar o bot real no @BotFather e preencher o `.env` (o Breno vai fazer).
-- Trocar os carros procedurais de sedã, SUV e picape por modelos .glb reais (Sketchfab/Poly Haven, licença CC0/CC BY, crédito
-  ao autor), como já feito nos hatches da Volkswagen: `client/scripts/otimizar-golf.mjs` gera o .glb e `MODELOS` em
-  `carrocerias.js` guarda marcas, medidas e crédito. Manter cor do veículo, clique por peça e marcações de avaria. Preferir
-  modelos com peças separadas. O `golf.glb` tem licença Standard do Sketchfab (sem redistribuição): nunca commitar.
+- Domínio oficinastatus.com.br no DNS do Registro.br (modo avançado): A da raiz, CNAME www e TXT asuid; depois, hostnames
+  com certificado gerenciado no Container Apps e webhook do Telegram no domínio (README, Deploy, passo 9).
+
+## Modelos 3D
+
+Um .glb por carroceria em `client/public/modelos/` (hatch, sedan, suv, picape), do Sketchfab com CC BY / CC BY-SA (créditos
+e licenças no README, "Modelos 3D"; o crédito aparece na tela). `client/scripts/otimizar-modelo.mjs <carroceria> original.glb`
+gera o arquivo e grava as medidas em `client/src/vistoria/medidas-modelos.json`; `inspecionar-modelo.mjs` ajuda a configurar
+um modelo novo. Manter cor do veículo, clique por peça e marcações de avaria. O `golf.glb` antigo tem licença Standard do
+Sketchfab (sem redistribuição): nunca commitar nem colocar na imagem.
 
 ## Convenções
 

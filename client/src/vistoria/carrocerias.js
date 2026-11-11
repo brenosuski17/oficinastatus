@@ -1,5 +1,6 @@
 // Medidas de cada carroceria (metros). O carro aponta para +x, y é para cima e +z é o lado direito.
 // As mesmas medidas servem para desenhar o modelo e para descobrir qual peça foi clicada.
+import MEDIDAS from './medidas-modelos.json'
 
 export const CARROCERIAS = {
   hatch: {
@@ -34,27 +35,36 @@ export const CARROCERIAS = {
 
 export const carroceria = (c) => CARROCERIAS[c] || CARROCERIAS.hatch
 
-// Modelos 3D prontos: gerados por client/scripts/otimizar-golf.mjs, nas mesmas coordenadas dos carros desenhados.
-// Valem só para as marcas indicadas (um Onix não pode aparecer com o emblema da VW). As medidas seguem o modelo e
-// substituem as do desenho na detecção de peça e no centro de cada peça.
+// Modelos 3D prontos, um por carroceria, usados para todos os veículos dela (de qualquer marca). Gerados por
+// client/scripts/otimizar-modelo.mjs nas mesmas coordenadas dos carros desenhados; as medidas de cada um (em
+// medidas-modelos.json) substituem as do desenho na detecção de peça e no centro de cada peça.
+// Licenças e autores: README, seção "Modelos 3D". O carro desenhado aparece enquanto o modelo carrega ou se ele falhar.
 export const MODELOS = {
   hatch: {
-    url: '/modelos/golf.glb',
-    marcas: /\b(vw|volks\s*wagen)\b/i,
-    credito: 'Modelo 3D: Volkswagen Golf GTI 2025, de geyges, Sketchfab (licença Standard)',
-    medidas: {
-      nome: 'Hatch',
-      base: 0.214, frente: 2.196, tras: -2.096, capoY: 0.75, cintura: 0.95, cinturaTras: 1.0,
-      eixoD: 1.316, eixoT: -1.316, rodaR: 0.328, arco: 0.4,
-      PB: [1.114, 0.954], PT: [0.259, 1.377], teto: 1.47, TR: [-1.548, 1.326], TB: [-1.947, 1.033],
-      portas: [0.87, -0.28, -1.3], colunaB: -0.28, colunaC: -1.3, largura: 1.786, cabineLarg: 1.45, retrovisorX: 0.62,
-    },
+    url: '/modelos/hatch.glb',
+    credito: 'Modelo 3D: 2025 Volkswagen Golf GTI MK8.5, de BMW\'S Lost Proxy (Sketchfab), CC BY 4.0, simplificado',
+    medidas: MEDIDAS.hatch,
+  },
+  sedan: {
+    url: '/modelos/sedan.glb',
+    credito: 'Modelo 3D: Toyota Corolla E170 2017, de Blender Boy (Sketchfab), CC BY-SA 4.0, simplificado',
+    medidas: MEDIDAS.sedan,
+  },
+  suv: {
+    url: '/modelos/suv.glb',
+    credito: 'Modelo 3D: Hyundai Creta 2016, de marcianozx (Sketchfab), CC BY 4.0, simplificado',
+    medidas: MEDIDAS.suv,
+  },
+  picape: {
+    url: '/modelos/picape.glb',
+    credito: 'Modelo 3D: Toyota Hilux Revo, de David_Holiday (Sketchfab), CC BY 4.0, simplificado',
+    medidas: MEDIDAS.picape,
   },
 }
 
-export function modeloDe(tipo, marca) {
+export function modeloDe(tipo) {
   const modelo = MODELOS[tipo in CARROCERIAS ? tipo : 'hatch']
-  return modelo?.marcas.test(marca || '') ? modelo : null
+  return modelo?.medidas ? modelo : null
 }
 
 /** Medidas do carro que aparece na tela: as do modelo pronto, se houver, ou as do desenho. */
