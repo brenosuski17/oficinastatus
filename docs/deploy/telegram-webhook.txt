@@ -1,0 +1,33 @@
+# Bot do Telegram: getMe e getWebhookInfo (sem o token)
+# Obtido em 2026-11-11 04:06 UTC com: curl https://api.telegram.org/bot<TOKEN>/getMe e /getWebhookInfo
+#
+# Situação: o webhook ainda aponta para o túnel usado no desenvolvimento. Ele passa para
+# https://oficinastatus.com.br/webhook/telegram quando o Registro.br publicar os registros do domínio
+# (README, Deploy, passo 9). Este arquivo é atualizado depois do setWebhook.
+
+getMe:
+{
+  "ok": true,
+  "result": {
+    "id": 9291685607,
+    "is_bot": true,
+    "first_name": "OficinaStatus",
+    "username": "oficinastatus_breno_bot"
+  }
+}
+
+getWebhookInfo:
+{
+  "ok": true,
+  "result": {
+    "url": "<túnel antigo do cloudflared, já fora do ar>",
+    "has_custom_certificate": false,
+    "pending_update_count": 0,
+    "max_connections": 40,
+    "ip_address": "104.16.230.132",
+    "allowed_updates": [
+      "message",
+      "callback_query"
+    ]
+  }
+}

@@ -35,7 +35,7 @@ Prints de desktop (1512×945) com os dados do `npm run seed`. A área do cliente
 - **Orçamentos** (ORC-ano-número) com filtro por situação, **Serviços** (catálogo de preços por categoria, editável pelo administrador) e **Histórico** de serviços encerrados.
 - **Abertura de OS pela placa:** se o carro já veio antes, aparece na hora. Se for novo, a consulta por placa (PlacaFipe) preenche marca, modelo, ano e cor, e a busca na **API FIPE** traz o valor de referência.
 - **7 etapas:** recebido → diagnóstico → orçamento → aprovação → execução (com "aguardando peça") → pronto → entregue. O servidor não deixa pular etapas.
-- **Como a inspeção funciona:** um carro em 3D, modelado no próprio sistema, em que o mecânico clica no ponto danificado. A peça é reconhecida sozinha (porta dianteira direita, capô, farol…). Ele escolhe o tipo de avaria e a gravidade, e o sistema sugere os serviços da tabela de preços, com valor e tempo. **Gerar orçamento** transforma as avarias em itens da OS e, se ela estiver no diagnóstico, já o conclui. O cliente vê o carro com os pontos marcados no portal.
+- **Como a inspeção funciona:** um carro em 3D, com um modelo real por carroceria ([Modelos 3D](#modelos-3d)) pintado com a cor do veículo, em que o mecânico clica no ponto danificado. A peça é reconhecida sozinha (porta dianteira direita, capô, farol…). Ele escolhe o tipo de avaria e a gravidade, e o sistema sugere os serviços da tabela de preços, com valor e tempo. **Gerar orçamento** transforma as avarias em itens da OS e, se ela estiver no diagnóstico, já o conclui. O cliente vê o carro com os pontos marcados no portal.
 - **Orçamento por itens**, com peças e mão de obra separadas.
 - **Mecânico responsável:** cada mecânico vê só as OS dele e as que ainda não têm responsável.
 - **Fotos** da entrada, do diagnóstico, da execução e da entrega, tiradas direto pelo celular.
@@ -331,22 +331,44 @@ az containerapp update -g rg-oficinastatus -n oficinastatus --image oficinastatu
 ```
 Cada atualização cria uma revisão nova, que aplica as migrations pendentes antes de subir.
 
-#### 9. Domínio próprio (falta)
-O Anexo B.3 exige domínio próprio também no caminho 2. O domínio vai sair pelo GitHub Student Developer Pack. Quando sair:
-1. **Zona e nameservers:** *DNS zones → Create* no `rg-oficinastatus`. Os **quatro** nameservers do *Overview* (`azure-dns.com`, `.net`, `.org` e `.info`) vão no painel do registrador.
-2. **Registros:** num subdomínio, como `www`, crie um **CNAME** para `oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io` e um **TXT** `asuid.www` com o *Custom domain verification ID* do app:
-   ```bash
-   az containerapp show -g rg-oficinastatus -n oficinastatus --query properties.customDomainVerificationId -o tsv
-   ```
-   Na raiz (`@`), o CNAME não é permitido: use um **registro A** para o IP estático do ambiente (`az containerapp env show … --query properties.staticIp`) e um TXT `asuid`.
-3. **Certificado gerenciado:** é gratuito e o Azure renova sozinho.
-   ```bash
-   az containerapp hostname add -g rg-oficinastatus -n oficinastatus --hostname www.<domínio>
-   az containerapp hostname bind -g rg-oficinastatus -n oficinastatus --hostname www.<domínio> \
-     --environment oficinastatus-env --validation-method CNAME
-   ```
-4. **`APP_URL`:** troque para o domínio novo, com `az containerapp update --set-env-vars APP_URL=https://www.<domínio>`.
-5. **Webhook:** registre no domínio definitivo com `npm run webhook -- --url https://www.<domínio>` (usa o token do `server/.env` local, o mesmo do secret).
+#### 9. Domínio próprio: oficinastatus.com.br
+O Anexo B.3 exige domínio próprio também no caminho 2. O domínio **oficinastatus.com.br** foi registrado no **Registro.br**, e a zona fica no DNS do próprio Registro.br, no **modo avançado**. Não foi criada uma zona no Azure DNS.
+
+- **Nameservers:** `a.auto.dns.br` e `b.auto.dns.br`, os do Registro.br. Eles já vêm configurados no domínio, então não há nameserver para trocar no registrador.
+- **Registros:** foram criados no painel do Registro.br, em *DNS → Editar zona*, no modo avançado.
+
+| Tipo | Nome | Valor | Para quê |
+|---|---|---|---|
+| A | *(raiz)* | `4.238.147.212` | IP estático do ambiente `oficinastatus-env` (`az containerapp env show … --query properties.staticIp`) |
+| TXT | `asuid` | *Custom domain verification ID* do app | prova ao Azure que o domínio é nosso |
+| CNAME | `www` | `oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io` | endereço do app |
+| TXT | `asuid.www` | o mesmo verification ID | prova do `www` |
+
+O verification ID sai de:
+```bash
+az containerapp show -g rg-oficinastatus -n oficinastatus --query properties.customDomainVerificationId -o tsv
+```
+
+Para conferir do seu computador:
+```bash
+nslookup -type=NS oficinastatus.com.br   # a.auto.dns.br e b.auto.dns.br
+nslookup oficinastatus.com.br            # 4.238.147.212
+nslookup www.oficinastatus.com.br        # CNAME para o Container Apps
+```
+
+Com os registros publicados, o certificado gerenciado é gratuito e renovado pelo Azure. A raiz é validada por HTTP; o `www`, pelo CNAME:
+```bash
+az containerapp hostname add  -g rg-oficinastatus -n oficinastatus --hostname oficinastatus.com.br
+az containerapp hostname bind -g rg-oficinastatus -n oficinastatus --hostname oficinastatus.com.br \
+  --environment oficinastatus-env --validation-method HTTP
+az containerapp hostname add  -g rg-oficinastatus -n oficinastatus --hostname www.oficinastatus.com.br
+az containerapp hostname bind -g rg-oficinastatus -n oficinastatus --hostname www.oficinastatus.com.br \
+  --environment oficinastatus-env --validation-method CNAME
+az containerapp update -g rg-oficinastatus -n oficinastatus --set-env-vars APP_URL=https://oficinastatus.com.br
+npm run webhook -- --url https://oficinastatus.com.br   # setWebhook com o segredo; usa o token do server/.env local, o mesmo do secret
+```
+
+**Situação em 11/11/2026, de madrugada:** os 4 registros foram salvos no painel, mas o Registro.br ainda não os tinha publicado. A zona servida por `a.auto.dns.br` só tinha o TXT `v=spf1 -all`. Por isso, os hostnames, o certificado, o `APP_URL` e o webhook no domínio ficaram para depois da publicação. Veja o [relatório](docs/relatorio-final.md).
 
 #### 10. Limitações conhecidas
 - **Fotos das OS:** ficam em `server/data/uploads`, no disco do contêiner, e **se perdem a cada nova revisão ou reinício**. Para guardá-las de verdade, seria preciso montar um volume do Azure Files.
@@ -389,14 +411,13 @@ Em *Azure Database for PostgreSQL flexible servers → Create*, com *Burstable B
 Com acesso privado, e não por firewall (passo 5). O app roda numa VNet, e o banco só é alcançável por um Private Endpoint nela, com o acesso público desligado. Os IPs de saída do Container Apps de consumo são compartilhados, e a opção *Allow public access from any Azure service* liberaria qualquer recurso do Azure, inclusive de outros clientes. Nunca `0.0.0.0/0`.
 
 **4. Onde fica o serviço de DNS do provedor, e como se cria uma zona para o seu domínio?**
-No **Azure DNS**, em *DNS zones → Create*, com o nome do domínio sem `www` (passo 9). A zona custa centavos por mês ([tutorial](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns)).
+No Azure, o serviço é o **Azure DNS**: *DNS zones → Create*, com o nome do domínio sem `www`, por centavos por mês ([tutorial](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns)). Neste projeto, a zona ficou no **DNS do Registro.br**, onde o domínio foi registrado, no modo avançado, que permite criar registros A, CNAME e TXT sem custo e sem delegar o domínio (passo 9). O Container Apps não exige que a zona esteja no Azure, só os registros certos.
 
 **5. Quais nameservers o provedor devolveu, e onde eles são informados no registrador do domínio?**
-O Azure devolve quatro, um de cada domínio (`azure-dns.com`, `.net`, `.org` e `.info`), listados no *Overview* da zona. Os quatro vão no painel do registrador, na opção de alterar os servidores DNS. É esse passo que entrega o domínio ao Azure.
-- Nameservers e registrador: `<preencher quando o domínio sair>`
+Com a zona no Registro.br, os nameservers são os dele, `a.auto.dns.br` e `b.auto.dns.br`, que já vêm configurados no domínio. Com o Azure DNS, seriam os quatro do *Overview* da zona (`azure-dns.com`, `.net`, `.org` e `.info`), informados no Registro.br em *Domínio → DNS → Alterar servidores DNS*. É essa troca que entrega o domínio ao Azure.
 
 **6. O seu caso pede registro A ou CNAME? Por quê?**
-**CNAME** num subdomínio (`www`), porque o Container Apps entrega um **nome** (`oficinastatus.graystone-3f5d3230…azurecontainerapps.io`), não um IP da aplicação. A raiz do domínio não aceita CNAME; nela vai um registro A para o IP estático do ambiente. Nos dois casos, o TXT `asuid` prova ao Azure que o domínio é seu.
+**Os dois.** O `www` usa **CNAME**, porque o Container Apps entrega um **nome** (`oficinastatus.graystone-3f5d3230…azurecontainerapps.io`), não um IP fixo da aplicação. A raiz (`oficinastatus.com.br`) não aceita CNAME, porque o DNS não permite CNAME junto com os registros SOA e NS da zona. Nela vai um **registro A** para o IP estático do ambiente (`4.238.147.212`). Nos dois casos, o TXT `asuid` prova ao Azure que o domínio é nosso.
 
 **7. Qual é o mecanismo de certificado do provedor, e ele funciona na arquitetura que vocês escolheram?**
 Funciona. O Container Apps tem **certificado gerenciado gratuito**, que o Azure emite e renova sozinho, para o domínio próprio (passo 9). O endereço `*.azurecontainerapps.io` já vem com o certificado da Microsoft, testado no passo 7. Por isso o Caddy e o Let's Encrypt do caminho 1 não são necessários.
@@ -407,19 +428,66 @@ Em *Cost Management → Budgets*, com orçamento mensal e alertas de 25 %, 50 % 
 **9. Como parar a aplicação e o banco entre uma aula e outra, e o que continua sendo cobrado?**
 O app escala para zero com `--min-replicas 0`. Sem réplica rodando, não há cobrança de processamento, mas o ACR, o Private Endpoint e os logs continuam. O banco para com `az postgres flexible-server stop`, e o armazenamento e os backups continuam sendo cobrados.
 
-### Checklist da entrega (B.8)
-- [x] Provedor escolhido e justificado (início desta seção)
-- [x] Aplicação no ar em https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io, sem túnel
-- [x] Banco gerenciado e string de conexão sem a senha
-- [x] Banco fechado para a internet: sem acesso público, só pelo Private Endpoint (passo 5)
-- [x] Migrations rodando no banco da nuvem: [`docs/deploy/migrations-azure.log`](docs/deploy/migrations-azure.log)
-- [x] HTTPS válido no endereço do Azure (passo 7)
-- [ ] Domínio próprio, DNS e certificado gerenciado (passo 9)
-- [ ] Webhook do Telegram na URL definitiva (passo 9)
-- [x] Alerta de gasto: orçamento de US$ 100 com alertas de 25 %, 50 % e 100 % (veja *Custo e controle de gasto*)
-- [ ] Prints para o relatório: recursos do grupo, Private Endpoint, banco com acesso público desligado, log das migrations, cadeado no navegador e consumo da assinatura
+O checklist completo da entrega, com o B.8, está em [Checklist do projeto integrador](#checklist-do-projeto-integrador).
 
 Fontes: [Azure Container Apps](https://learn.microsoft.com/azure/container-apps/) · [Rede do Container Apps](https://learn.microsoft.com/azure/container-apps/networking) · [Private Link no Flexible Server](https://learn.microsoft.com/azure/postgresql/flexible-server/concepts-networking-private-link) · [Domínio próprio e certificado gerenciado](https://learn.microsoft.com/azure/container-apps/custom-domains-managed-certificates) · [Parar o Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server) · [Azure DNS](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns) · [Orçamentos no Cost Management](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
+
+## Checklist do projeto integrador
+
+Cada requisito do `projeto-integrador.pdf`, conferido em 11/11/2026 contra o Azure, o DNS e este repositório:
+- ✅ feito, com a evidência ao lado;
+- ⏳ depende de algo de fora (DNS ou print);
+- ❌ não feito.
+
+Onde a evidência é um print que só o grupo pode tirar, aparece **print pendente**.
+
+### Requisitos comuns (tema 12, OficinaStatus)
+
+| Requisito | Situação | Evidência |
+|---|---|---|
+| API REST própria em Node.js | ✅ | [`server/src/routes/`](server/src/routes), seção [API](#api) |
+| PostgreSQL com migrations versionadas | ✅ | [`server/migrations/`](server/migrations), tabela `schema_migrations`, [`server/src/migrar.js`](server/src/migrar.js) |
+| Entidades mínimas: `clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens` | ✅ | [`001_inicial.sql`](server/migrations/001_inicial.sql), [`002_telegram.sql`](server/migrations/002_telegram.sql), [DER](docs/der.md) |
+| Bot do Telegram enviando, e registro de **toda** mensagem enviada e recebida | ✅ | tabela `mensagens` (com `payload_bruto`), [`envio.js`](server/src/services/envio.js), [`telegram.test.js`](server/test/telegram.test.js) |
+| Webhook público em HTTPS, com validação da origem e status `enfileirada / enviada / falha / respondida` | ✅ no endereço do Azure · ⏳ no domínio | `POST /webhook/telegram` responde 401 sem o segredo (testado em produção); registro no domínio: [passo 9](#9-domínio-próprio-oficinastatuscombr) |
+| Vínculo (opt-in) por deep link, com o `chat_id` gravado | ✅ | `canais_usuario`, [`canais.js`](server/src/services/canais.js), teste "o deep link vincula o chat" |
+| Segunda API: FIPE (Parallelum) | ✅ | [`fipe.js`](server/src/services/fipe.js), seção [FIPE](#fipe-parallelum) |
+| Docker Compose no desenvolvimento (aplicação + banco) | ✅ | [`docker-compose.yml`](docker-compose.yml) |
+| Prometheus e Grafana (2º bimestre) | ❌ | ainda não feito |
+| Repositório com uma tag por aula (`aula-01` a `aula-18`) e release `v1.0.0` | ❌ | o repositório não tem tags nem releases |
+| CI com lint e testes | ✅ | [`.github/workflows/ci.yml`](.github/workflows/ci.yml): lint, 40 testes de integração e build a cada push |
+| Deploy em nuvem com URL pública e HTTPS válido | ✅ no endereço do Azure · ⏳ no domínio | [Deploy no Azure](#deploy-no-azure-container-apps), passo 7 |
+
+### Anexo A: Telegram (A.3.7, A.5 e A.7)
+
+| Item | Situação | Evidência |
+|---|---|---|
+| Bot criado no @BotFather, token no `.env`, fora do Git | ✅ | `@oficinastatus_breno_bot`. Em produção, o token é o secret `telegram-token` do Container Apps |
+| `getMe` respondendo `ok: true` | ✅ | conferido em 11/11/2026 |
+| Deep link de vínculo gravando o `chat_id` | ✅ | teste "o deep link vincula o chat e funciona para cliente sem e-mail" |
+| Envio com o `message_id` em `mensagens.id_externo` | ✅ | teste "envio grava o message_id" |
+| `setWebhook` com `secret_token` e 401 quando o cabeçalho não confere | ✅ 401 · ⏳ URL definitiva | teste "webhook recusa quem não traz o segredo certo"; registro e `getWebhookInfo` no domínio: [`docs/deploy/telegram-webhook.txt`](docs/deploy/telegram-webhook.txt) |
+| Mensagens recebidas e cliques de botão persistidos | ✅ | testes "Aprovar pelo botão…" e "update repetido é processado uma vez…" |
+| Tratamento de 429 e de 403 | ✅ | testes "429 espera o retry_after" e "403 desativa o vínculo" |
+| Nomes do modelo de dados A.5 (`canais_usuario`, `mensagens`, enums `plataforma_msg` e `status_msg`) | ✅ | [`002_telegram.sql`](server/migrations/002_telegram.sql) |
+| Segurança (A.7): token fora do código, origem validada, 200 rápido, idempotência por `update_id`, `payload_bruto` | ✅ | [`.env.example`](server/.env.example) sem valores; testes "webhook responde 200 antes de processar" e "update repetido…" |
+
+### Anexo B: publicação (B.1 e checklist B.8)
+
+| Item do B.8 | Situação | Evidência |
+|---|---|---|
+| Provedor escolhido e justificado | ✅ | [Deploy no Azure](#deploy-no-azure-container-apps): Azure, caminho 2, porque a assinatura gratuita não libera VMs |
+| Aplicação rodando em máquina de nuvem, sem túnel | ✅ | https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io (`/api/saude` → 200) |
+| Banco em serviço gerenciado | ✅ · **print pendente** | String sem a senha no README. Print: *Overview* do `oficinastatus-db-breno`, com *Burstable B1ms* |
+| Banco fechado para a internet | ✅ · **print pendente** | Acesso público desligado e só o Private Endpoint (passo 5). Prints: *Networking* do servidor com *Public access: Disabled* e a conexão do `pe-oficinastatus-db` |
+| Migrations rodando contra o banco da nuvem | ✅ | [`docs/deploy/migrations-azure.log`](docs/deploy/migrations-azure.log): `Migrations aplicadas: 001_inicial.sql, 002_telegram.sql` |
+| Domínio apontado por DNS | ⏳ | registros criados no Registro.br e ainda não publicados ([passo 9](#9-domínio-próprio-oficinastatuscombr)); depois, `nslookup oficinastatus.com.br` → `4.238.147.212` · **print pendente** |
+| HTTPS válido | ✅ no endereço do Azure · ⏳ no domínio | Endereço do Azure: certificado *Microsoft TLS G2 RSA CA OCSP 04*, TLS 1.3. No domínio, depende do DNS · **print pendente** (cadeado) |
+| Webhook da plataforma usando a URL definitiva | ⏳ | depende do domínio; hoje o webhook ainda aponta para um túnel antigo · **print pendente** |
+| Documentação do caminho de DNS e certificado | ✅ | [passo 9](#9-domínio-próprio-oficinastatuscombr) e [B.9](#roteiro-de-pesquisa-b9), perguntas 4 a 7 |
+| Controle de custo | ✅ · **print pendente** | Orçamento de US$ 100 com alertas de 25/50/100 % ([Custo](#custo-e-controle-de-gasto)). Prints: o orçamento com os alertas e o *Cost analysis* com o consumo |
+| Segredos no cofre do provedor, ou no mínimo fora do Git (B.4 e B.7) | ✅ | secrets do Container Apps; nada de `.env` na imagem nem no Git |
+| Roteiro de pesquisa B.9 respondido | ✅ | [B.9](#roteiro-de-pesquisa-b9) |
 
 ## Estrutura
 
@@ -447,25 +515,29 @@ oficinastatus/
 │   │       └── relatorios.js     # indicadores do painel
 │   ├── scripts/webhook.js        # npm run webhook: túnel + setWebhook (--url: domínio de produção)
 │   ├── .env.example              # variáveis de desenvolvimento
-│   ├── .env.production.example   # variáveis de produção, comentadas
+│   ├── .env.production.example   # variáveis de produção do caminho 1 (VM); no Container Apps são secrets
 │   └── test/                     # fluxo completo, vistoria, Telegram e PostgreSQL pela API
 ├── client/src/
 │   ├── acesso/                   # entrar, primeiro acesso, criar senha
 │   ├── oficina/                  # painel, quadro, OS, nova OS, cadastros, equipe, integrações
 │   ├── cliente/                  # portal, detalhe da OS, página do link
-│   ├── vistoria/                 # carro 3D, detecção da peça, painel de avarias
+│   ├── vistoria/                 # carro 3D, detecção da peça, painel de avarias; medidas-modelos.json
 │   ├── ui/                       # placa Mercosul, trilha de etapas, botões, modais, avisos
 │   └── lib/                      # API, login, formatos, etapas
+├── client/public/modelos/        # hatch, sedan, suv e picape .glb (Sketchfab, CC BY / CC BY-SA)
+├── client/scripts/               # otimizar-modelo.mjs e inspecionar-modelo.mjs (modelos 3D)
 ├── deploy/
 │   ├── definir-banco-azure.ps1   # grava a DATABASE_URL como secret do Container Apps (pede a senha)
 │   ├── trocar-senhas.ps1         # troca as senhas das contas de produção pela API (pede cada senha)
 │   └── instalar-vm.sh            # caminho 1 (VM), não usado: prepara uma VM Ubuntu com Docker
-├── docs/deploy/                  # log das migrations no banco da nuvem
+├── docs/deploy/                  # evidências do deploy: log das migrations e webhook do Telegram
+├── docs/apresentacao.md          # roteiro de 5 minutos e perguntas prováveis
+├── docs/relatorio-final.md       # o que foi feito, testes e pendências
 ├── docs/                         # DER, fluxo de estados e telas
 ├── Dockerfile                    # imagem da aplicação (site + API)
 ├── docker-compose.yml            # desenvolvimento: aplicação + PostgreSQL
-├── docker-compose.prod.yml       # produção: aplicação + Caddy, com banco gerenciado
-└── Caddyfile                     # HTTPS automático com Let's Encrypt
+├── docker-compose.prod.yml       # caminho 1 (VM + Caddy), não usado: a produção é no Container Apps
+└── Caddyfile                     # caminho 1: HTTPS com Let's Encrypt na VM
 ```
 
 ## Banco de dados
