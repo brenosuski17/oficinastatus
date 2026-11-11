@@ -465,7 +465,7 @@ Onde a evidência é um print que só o grupo pode tirar, aparece **print penden
 | Segunda API: FIPE (Parallelum) | ✅ | [`fipe.js`](server/src/services/fipe.js), seção [FIPE](#fipe-parallelum) |
 | Docker Compose no desenvolvimento (aplicação + banco) | ✅ | [`docker-compose.yml`](docker-compose.yml) |
 | Prometheus e Grafana (2º bimestre) | ❌ | ainda não feito |
-| Repositório com uma tag por aula (`aula-01` a `aula-18`) e release `v1.0.0` | ❌ | o repositório não tem tags nem releases |
+| Repositório com uma tag por aula (`aula-01` a `aula-18`) e release `v1.0.0` | ⚠️ | release [`v1.0.0`](https://github.com/brenosuski17/oficinastatus/releases/tag/v1.0.0) publicada. O repositório foi criado em 04/11/2026, depois das aulas, por isso não há tags por aula |
 | CI com lint e testes | ✅ | [`.github/workflows/ci.yml`](.github/workflows/ci.yml): lint, 40 testes de integração e build a cada push |
 | Deploy em nuvem com URL pública e HTTPS válido | ✅ | https://oficinastatus.com.br; [Deploy no Azure](#deploy-no-azure-container-apps), passos 7 e 9 |
 
