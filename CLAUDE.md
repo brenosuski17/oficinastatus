@@ -62,8 +62,9 @@ E-mails e registros do sistema ficam em `comunicacoes`, e a view `historico_mens
 
 ## Próximos passos combinados
 
-- Domínio oficinastatus.com.br no DNS do Registro.br (modo avançado): A da raiz, CNAME www e TXT asuid; depois, hostnames
-  com certificado gerenciado no Container Apps e webhook do Telegram no domínio (README, Deploy, passo 9).
+- Feito em 11/11/2026: domínio oficinastatus.com.br e www no Container Apps, com certificado gerenciado, `APP_URL` e webhook
+  do Telegram no domínio. A zona fica no DNS do Registro.br (modo avançado, nameservers `d.sec.dns.br` e `e.sec.dns.br`;
+  README, Deploy, passo 9). Faltam os prints do checklist, as tags por aula com a release `v1.0.0`, e o Prometheus com o Grafana.
 
 ## Modelos 3D
 

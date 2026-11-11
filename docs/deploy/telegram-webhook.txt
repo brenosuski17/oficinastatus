@@ -1,9 +1,8 @@
 # Bot do Telegram: getMe e getWebhookInfo (sem o token)
-# Obtido em 2026-11-11 04:06 UTC com: curl https://api.telegram.org/bot<TOKEN>/getMe e /getWebhookInfo
+# Obtido em 2026-11-11 10:35 UTC com: curl https://api.telegram.org/bot<TOKEN>/getMe e /getWebhookInfo
 #
-# Situação: o webhook ainda aponta para o túnel usado no desenvolvimento. Ele passa para
-# https://oficinastatus.com.br/webhook/telegram quando o Registro.br publicar os registros do domínio
-# (README, Deploy, passo 9). Este arquivo é atualizado depois do setWebhook.
+# Webhook registrado com setWebhook (npm run webhook -- --url https://oficinastatus.com.br), com secret_token.
+# Teste sem o segredo: curl -X POST https://oficinastatus.com.br/webhook/telegram -> HTTP 401.
 
 getMe:
 {
@@ -12,7 +11,17 @@ getMe:
     "id": 9291685607,
     "is_bot": true,
     "first_name": "OficinaStatus",
-    "username": "oficinastatus_breno_bot"
+    "username": "oficinastatus_breno_bot",
+    "can_join_groups": true,
+    "can_read_all_group_messages": false,
+    "supports_inline_queries": false,
+    "supports_guest_queries": false,
+    "can_connect_to_business": false,
+    "has_main_web_app": false,
+    "has_topics_enabled": false,
+    "allows_users_to_create_topics": false,
+    "can_manage_bots": false,
+    "supports_join_request_queries": false
   }
 }
 
@@ -20,11 +29,11 @@ getWebhookInfo:
 {
   "ok": true,
   "result": {
-    "url": "<túnel antigo do cloudflared, já fora do ar>",
+    "url": "https://oficinastatus.com.br/webhook/telegram",
     "has_custom_certificate": false,
     "pending_update_count": 0,
     "max_connections": 40,
-    "ip_address": "104.16.230.132",
+    "ip_address": "4.238.147.212",
     "allowed_updates": [
       "message",
       "callback_query"

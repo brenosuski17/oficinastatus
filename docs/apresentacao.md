@@ -92,7 +92,12 @@ A raiz não aceita CNAME, então usa registro A para o IP estático do ambiente.
 do Container Apps. Os TXT `asuid` provam ao Azure que o domínio é nosso.
 
 **Quem emite o certificado?**
-O certificado gerenciado do Container Apps, que é gratuito e renovado pelo Azure. O emissor está anotado no README.
+O certificado gerenciado do Container Apps, que é gratuito e renovado pelo Azure. Foi emitido pela GeoTrust TLS RSA
+CA G1 (DigiCert), um para a raiz e outro para o `www`, e vale até 11/05/2027.
+
+**Por que o nslookup mostra `d.sec.dns.br`?**
+A zona fica no DNS do Registro.br, no modo avançado. Ao ativar esse modo, o Registro.br troca os nameservers do
+domínio para os dele, e não foi preciso criar uma zona no Azure DNS.
 
 **Telegram não informa "lido". Como vocês sabem que o cliente viu?**
 Pelo status `respondida`, que vem do clique no botão. É o que o Anexo A.2.1 pede.

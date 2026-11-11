@@ -6,27 +6,42 @@ O que foi feito sem o Breno acompanhando, o resultado de cada teste e o que falt
 
 | Parte | Situação |
 |---|---|
-| 1. Domínio oficinastatus.com.br | ⏳ **Bloqueado no Registro.br:** os 4 registros foram salvos no painel, mas não foram publicados durante a noite (veja abaixo). Os hostnames, o certificado, o `APP_URL` e o webhook no domínio não foram feitos. |
+| 1. Domínio oficinastatus.com.br | ✅ **Concluído na manhã de 11/11:** o DNS já estava publicado desde a madrugada, nos nameservers novos do modo avançado (`d.sec.dns.br` e `e.sec.dns.br`), que a checagem da noite não consultava. Os hostnames com certificado gerenciado, o `APP_URL` e o webhook no domínio foram feitos e testados (veja abaixo). |
 | 2. Carros 3D | ✅ Os 4 modelos do Sketchfab foram baixados, com a licença conferida, otimizados, publicados no Azure e testados. |
 | 3. Documentação | ✅ Checklist do projeto integrador no README, `docs/apresentacao.md` e `docs/deploy/telegram-webhook.txt`. |
-| 4. Revisão final | ✅ Azure, repositório e histórico conferidos; correções feitas. O que depende do domínio ficou pendente. |
+| 4. Revisão final | ✅ Azure, repositório e histórico conferidos; correções feitas. O que dependia do domínio foi feito de manhã. |
 
-**No ar:** https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io (imagem `7f86cf5`, revisão
-`oficinastatus--0000003`, 1 réplica). Para voltar à versão anterior, a imagem antiga é `oficinastatus:60703bd`.
+**No ar:** https://oficinastatus.com.br (imagem `7f86cf5`, revisão `oficinastatus--0000004`, 1 réplica). O endereço
+do Azure, https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io, continua funcionando. Para voltar
+à versão anterior, a imagem antiga é `oficinastatus:60703bd`.
 
 ## 1. Domínio
 
-**O que foi conferido:**
-- A delegação no `.br` continua no `a.auto.dns.br` e no `b.auto.dns.br`, os nameservers do Registro.br.
-- De 00:00 às 01:00 (horário de Brasília), e depois a cada 3 minutos, a zona servida pelo `a.auto.dns.br` não tinha nenhum dos 4 registros: nem o A da raiz, nem o CNAME `www`, nem os TXT `asuid`. Só havia o TXT `v=spf1 -all` e um MX nulo.
-- O serial do SOA subiu (`2026315100` → `…120` → `…130` → `…150` → `…160`), então o Registro.br está republicando a zona, mas sem os registros novos.
-- Os servidores do modo avançado (`a/b/c.sec.dns.br`) recusam consultas sobre o domínio.
+**Durante a noite:** a checagem automática consultava o `a.auto.dns.br`, o nameserver antigo, e marcou 0 de 4 até
+as 7h18. Na verdade, ao ativar o modo avançado, o Registro.br já tinha passado a delegação do domínio para
+`d.sec.dns.br` e `e.sec.dns.br`, que serviam os 4 registros. O erro foi da checagem, não do Registro.br.
 
-**Provável causa:** os registros ficaram salvos, mas não publicados. Isso acontece quando falta confirmar a edição da zona ou quando o modo avançado ainda está sendo ativado.
+**De manhã (11/11, com o seu ok):**
+1. Conferi os 4 registros em `d.sec.dns.br`, `e.sec.dns.br`, 8.8.8.8 e 1.1.1.1: todos certos.
+2. Guardei a imagem atual (`7f86cf5`, revisão `0000003`) para poder voltar a ela.
+3. Rodei `hostname add` e `bind`, com certificado gerenciado, no `www` (validação por CNAME) e na raiz (validação por HTTP).
+4. Troquei o `APP_URL` para `https://oficinastatus.com.br`. Isso criou a revisão `oficinastatus--0000004`, que está saudável.
+5. Conferi que o token, o nome do bot e o segredo do webhook do `server/.env` são iguais aos secrets do Container Apps. A comparação não mostra os valores. Depois, rodei `npm run webhook -- --url https://oficinastatus.com.br`.
 
-**O que não foi feito, por depender do DNS:** `hostname add/bind` no Container Apps, o certificado gerenciado, a troca do `APP_URL` e o `setWebhook` no domínio.
+**Testes:**
 
-**Webhook do Telegram:** continua no túnel antigo do cloudflared, que está fora do ar. Por isso o bot **não recebe** mensagens nem cliques agora. Não mudei o webhook para o endereço `*.azurecontainerapps.io` porque você pediu o domínio e o `CLAUDE.md` pede para não mexer no bot real sem pedido. Se o domínio não sair a tempo, veja o "Plano B" abaixo.
+| Teste | Resultado |
+|---|---|
+| `nslookup oficinastatus.com.br` | `4.238.147.212` |
+| `nslookup www.oficinastatus.com.br` | CNAME para o Container Apps |
+| `https://oficinastatus.com.br/api/saude` e `https://www…/api/saude` | 200 |
+| `http://oficinastatus.com.br` | 301 para `https://` |
+| Certificados | `CN=oficinastatus.com.br` e `CN=www.oficinastatus.com.br`, com emissor **GeoTrust TLS RSA CA G1** (DigiCert), válidos até 11/05/2027 |
+| `POST /webhook/telegram` sem o segredo | 401 |
+| `getWebhookInfo` | `https://oficinastatus.com.br/webhook/telegram`, IP `4.238.147.212`, 0 pendentes, sem erro |
+
+**Não testado:** um `/start` de verdade no bot pelo domínio, porque depende do seu celular. Mande `/start` para o
+`@oficinastatus_breno_bot` antes da apresentação para conferir.
 
 ## 2. Carros 3D
 
@@ -75,7 +90,7 @@ As 4 licenças eram as indicadas, então nenhum modelo foi pulado.
   - orçamento documentado: `orcamento-oficinastatus`, US$ 100 por mês, alertas de 25/50/100 % no escopo da conta de cobrança *breno suski*, conferido pela API;
   - seção "Modelos 3D".
 - **`docs/apresentacao.md`:** roteiro de 5 minutos, ordem da demonstração ao vivo e perguntas prováveis.
-- **`docs/deploy/telegram-webhook.txt`:** `getMe` e `getWebhookInfo` sem o token. Hoje mostra o túnel antigo; atualizar depois do `setWebhook` no domínio.
+- **`docs/deploy/telegram-webhook.txt`:** `getMe` e `getWebhookInfo` sem o token, já com o webhook no domínio.
 
 ## 4. Revisão final
 
@@ -89,7 +104,7 @@ As 4 licenças eram as indicadas, então nenhum modelo foi pulado.
 | Private Endpoint | `pe-oficinastatus-db` aprovado, com o banco em 10.20.1.4 |
 | Ambiente | IP estático `4.238.147.212`, o do registro A |
 
-**Testes em produção** (11/11, 04:07 UTC), pelo endereço do Azure, porque o domínio ainda não resolve:
+**Testes em produção** (11/11, 04:07 UTC), pelo endereço do Azure, antes de o domínio ser ligado:
 
 | Teste | Resultado |
 |---|---|
@@ -121,28 +136,15 @@ desenvolvimento, igual ao do `.env.example`. Só os dois `.env.*.example` foram 
 
 ## O que fazer de manhã (nesta ordem)
 
-1. **Registro.br:**
-   - abrir o painel do domínio, em *DNS*, e conferir se os 4 registros aparecem na zona;
-   - se houver botão de salvar ou publicar pendente, confirmar;
-   - testar com `nslookup oficinastatus.com.br` (deve dar `4.238.147.212`) e `nslookup -type=TXT asuid.oficinastatus.com.br`.
-2. **Quando o DNS responder**, me peça para seguir, ou rode os comandos do README (Deploy, passo 9):
-   - `hostname add/bind` da raiz (validação HTTP) e do `www` (validação CNAME);
-   - troca do `APP_URL`;
-   - `npm run webhook -- --url https://oficinastatus.com.br`;
-   - depois, atualizar o `docs/deploy/telegram-webhook.txt` e marcar os itens ⏳ do checklist.
-3. **Plano B, se o domínio não sair antes da apresentação** (decisão sua, porque muda o bot real):
-   ```bash
-   npm run webhook -- --url https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io
-   ```
-   Assim, o "Aprovar pelo Telegram" funciona na apresentação. Quando o domínio sair, rode de novo com o domínio.
-4. **Prints pendentes** (lista no checklist do README):
+1. **Telegram:** mandar `/start` para o `@oficinastatus_breno_bot` e conferir que ele responde, agora pelo webhook do domínio.
+2. **Prints pendentes** (lista no checklist do README):
    - *Overview* do banco, com o B1ms;
    - *Networking* do banco, com *Public access: Disabled*, e a conexão aprovada do `pe-oficinastatus-db`;
    - cadeado no navegador, com o emissor do certificado;
    - `nslookup` do domínio;
    - `getWebhookInfo` ou a configuração do webhook apontando para o domínio;
    - o orçamento com os 3 alertas e o *Cost analysis* com o consumo.
-5. **Antes de apresentar:** seguir a lista "Antes de começar" do `docs/apresentacao.md`.
+3. **Antes de apresentar:** seguir a lista "Antes de começar" do `docs/apresentacao.md`.
 
 ## Pendências fora do escopo desta noite
 

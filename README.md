@@ -198,7 +198,8 @@ Funciona sem configurar nada, dentro do limite diário gratuito. Para aumentar o
 
 ## Deploy no Azure (Container Apps)
 
-**No ar:** https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io
+**No ar:** https://oficinastatus.com.br (também em https://www.oficinastatus.com.br e no endereço do Azure,
+https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io)
 
 **Provedor escolhido:** Microsoft Azure, na **conta gratuita** (assinatura *Azure subscription 1*, com **US$ 200** de crédito).
 **Caminho:** **serviço de contêiner gerenciado** (caminho 2 do Anexo B.3), com o **Azure Container Apps**.
@@ -334,7 +335,7 @@ Cada atualização cria uma revisão nova, que aplica as migrations pendentes an
 #### 9. Domínio próprio: oficinastatus.com.br
 O Anexo B.3 exige domínio próprio também no caminho 2. O domínio **oficinastatus.com.br** foi registrado no **Registro.br**, e a zona fica no DNS do próprio Registro.br, no **modo avançado**. Não foi criada uma zona no Azure DNS.
 
-- **Nameservers:** `a.auto.dns.br` e `b.auto.dns.br`, os do Registro.br. Eles já vêm configurados no domínio, então não há nameserver para trocar no registrador.
+- **Nameservers:** `d.sec.dns.br` e `e.sec.dns.br`, os do modo avançado do Registro.br. Antes do modo avançado, o domínio usava `a.auto.dns.br` e `b.auto.dns.br`. A troca é feita pelo próprio Registro.br quando o modo avançado é ativado, então não há nameserver para digitar no registrador.
 - **Registros:** foram criados no painel do Registro.br, em *DNS → Editar zona*, no modo avançado.
 
 | Tipo | Nome | Valor | Para quê |
@@ -351,7 +352,7 @@ az containerapp show -g rg-oficinastatus -n oficinastatus --query properties.cus
 
 Para conferir do seu computador:
 ```bash
-nslookup -type=NS oficinastatus.com.br   # a.auto.dns.br e b.auto.dns.br
+nslookup -type=NS oficinastatus.com.br   # d.sec.dns.br e e.sec.dns.br
 nslookup oficinastatus.com.br            # 4.238.147.212
 nslookup www.oficinastatus.com.br        # CNAME para o Container Apps
 ```
@@ -368,7 +369,17 @@ az containerapp update -g rg-oficinastatus -n oficinastatus --set-env-vars APP_U
 npm run webhook -- --url https://oficinastatus.com.br   # setWebhook com o segredo; usa o token do server/.env local, o mesmo do secret
 ```
 
-**Situação em 11/11/2026, de madrugada:** os 4 registros foram salvos no painel, mas o Registro.br ainda não os tinha publicado. A zona servida por `a.auto.dns.br` só tinha o TXT `v=spf1 -all`. Por isso, os hostnames, o certificado, o `APP_URL` e o webhook no domínio ficaram para depois da publicação. Veja o [relatório](docs/relatorio-final.md).
+**Situação em 11/11/2026 (feito e testado):** os 4 registros respondem em `d.sec.dns.br`, `e.sec.dns.br`, 8.8.8.8 e 1.1.1.1. Os dois hostnames estão ligados com certificado gerenciado, o `APP_URL` é `https://oficinastatus.com.br` (revisão `oficinastatus--0000004`) e o webhook do Telegram aponta para o domínio ([`docs/deploy/telegram-webhook.txt`](docs/deploy/telegram-webhook.txt)).
+
+| Teste | Resultado |
+|---|---|
+| `nslookup oficinastatus.com.br` | `4.238.147.212` |
+| `nslookup www.oficinastatus.com.br` | CNAME `oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io` |
+| `GET https://oficinastatus.com.br/api/saude` e `https://www…` | 200, `{"ok":true}` |
+| `http://oficinastatus.com.br` | 301 para `https://` |
+| Certificado da raiz e do `www` | um para cada nome (`CN=oficinastatus.com.br` e `CN=www.oficinastatus.com.br`), emitido por **GeoTrust TLS RSA CA G1** (DigiCert), o emissor do certificado gerenciado do Container Apps; válido de 10/11/2026 a 11/05/2027, renovado pelo Azure |
+| `POST https://oficinastatus.com.br/webhook/telegram` sem o segredo | 401 |
+| `getWebhookInfo` | `url: https://oficinastatus.com.br/webhook/telegram`, `ip_address: 4.238.147.212`, 0 pendentes |
 
 #### 10. Limitações conhecidas
 - **Fotos das OS:** ficam em `server/data/uploads`, no disco do contêiner, e **se perdem a cada nova revisão ou reinício**. Para guardá-las de verdade, seria preciso montar um volume do Azure Files.
@@ -414,13 +425,13 @@ Com acesso privado, e não por firewall (passo 5). O app roda numa VNet, e o ban
 No Azure, o serviço é o **Azure DNS**: *DNS zones → Create*, com o nome do domínio sem `www`, por centavos por mês ([tutorial](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns)). Neste projeto, a zona ficou no **DNS do Registro.br**, onde o domínio foi registrado, no modo avançado, que permite criar registros A, CNAME e TXT sem custo e sem delegar o domínio (passo 9). O Container Apps não exige que a zona esteja no Azure, só os registros certos.
 
 **5. Quais nameservers o provedor devolveu, e onde eles são informados no registrador do domínio?**
-Com a zona no Registro.br, os nameservers são os dele, `a.auto.dns.br` e `b.auto.dns.br`, que já vêm configurados no domínio. Com o Azure DNS, seriam os quatro do *Overview* da zona (`azure-dns.com`, `.net`, `.org` e `.info`), informados no Registro.br em *Domínio → DNS → Alterar servidores DNS*. É essa troca que entrega o domínio ao Azure.
+Com a zona no Registro.br, os nameservers são os do modo avançado dele, `d.sec.dns.br` e `e.sec.dns.br`, que o próprio Registro.br põe no domínio ao ativar o modo avançado (antes eram `a.auto.dns.br` e `b.auto.dns.br`). Com o Azure DNS, seriam os quatro do *Overview* da zona (`azure-dns.com`, `.net`, `.org` e `.info`), informados no Registro.br em *Domínio → DNS → Alterar servidores DNS*. É essa troca que entrega o domínio ao Azure.
 
 **6. O seu caso pede registro A ou CNAME? Por quê?**
 **Os dois.** O `www` usa **CNAME**, porque o Container Apps entrega um **nome** (`oficinastatus.graystone-3f5d3230…azurecontainerapps.io`), não um IP fixo da aplicação. A raiz (`oficinastatus.com.br`) não aceita CNAME, porque o DNS não permite CNAME junto com os registros SOA e NS da zona. Nela vai um **registro A** para o IP estático do ambiente (`4.238.147.212`). Nos dois casos, o TXT `asuid` prova ao Azure que o domínio é nosso.
 
 **7. Qual é o mecanismo de certificado do provedor, e ele funciona na arquitetura que vocês escolheram?**
-Funciona. O Container Apps tem **certificado gerenciado gratuito**, que o Azure emite e renova sozinho, para o domínio próprio (passo 9). O endereço `*.azurecontainerapps.io` já vem com o certificado da Microsoft, testado no passo 7. Por isso o Caddy e o Let's Encrypt do caminho 1 não são necessários.
+Funciona. O Container Apps tem **certificado gerenciado gratuito**, que o Azure emite e renova sozinho, para o domínio próprio (passo 9). O de `oficinastatus.com.br` e o de `www` foram emitidos pela *GeoTrust TLS RSA CA G1* (DigiCert). O endereço `*.azurecontainerapps.io` já vem com o certificado da Microsoft, testado no passo 7. Por isso o Caddy e o Let's Encrypt do caminho 1 não são necessários.
 
 **8. Como configurar um alerta de gasto por e-mail?**
 Em *Cost Management → Budgets*, com orçamento mensal e alertas de 25 %, 50 % e 100 % (veja *Custo e controle de gasto*).
@@ -449,14 +460,14 @@ Onde a evidência é um print que só o grupo pode tirar, aparece **print penden
 | PostgreSQL com migrations versionadas | ✅ | [`server/migrations/`](server/migrations), tabela `schema_migrations`, [`server/src/migrar.js`](server/src/migrar.js) |
 | Entidades mínimas: `clientes`, `veiculos`, `ordens_servico`, `etapas`, `mensagens` | ✅ | [`001_inicial.sql`](server/migrations/001_inicial.sql), [`002_telegram.sql`](server/migrations/002_telegram.sql), [DER](docs/der.md) |
 | Bot do Telegram enviando, e registro de **toda** mensagem enviada e recebida | ✅ | tabela `mensagens` (com `payload_bruto`), [`envio.js`](server/src/services/envio.js), [`telegram.test.js`](server/test/telegram.test.js) |
-| Webhook público em HTTPS, com validação da origem e status `enfileirada / enviada / falha / respondida` | ✅ no endereço do Azure · ⏳ no domínio | `POST /webhook/telegram` responde 401 sem o segredo (testado em produção); registro no domínio: [passo 9](#9-domínio-próprio-oficinastatuscombr) |
+| Webhook público em HTTPS, com validação da origem e status `enfileirada / enviada / falha / respondida` | ✅ | webhook em `https://oficinastatus.com.br/webhook/telegram`, que responde 401 sem o segredo (testado em produção); [passo 9](#9-domínio-próprio-oficinastatuscombr) |
 | Vínculo (opt-in) por deep link, com o `chat_id` gravado | ✅ | `canais_usuario`, [`canais.js`](server/src/services/canais.js), teste "o deep link vincula o chat" |
 | Segunda API: FIPE (Parallelum) | ✅ | [`fipe.js`](server/src/services/fipe.js), seção [FIPE](#fipe-parallelum) |
 | Docker Compose no desenvolvimento (aplicação + banco) | ✅ | [`docker-compose.yml`](docker-compose.yml) |
 | Prometheus e Grafana (2º bimestre) | ❌ | ainda não feito |
 | Repositório com uma tag por aula (`aula-01` a `aula-18`) e release `v1.0.0` | ❌ | o repositório não tem tags nem releases |
 | CI com lint e testes | ✅ | [`.github/workflows/ci.yml`](.github/workflows/ci.yml): lint, 40 testes de integração e build a cada push |
-| Deploy em nuvem com URL pública e HTTPS válido | ✅ no endereço do Azure · ⏳ no domínio | [Deploy no Azure](#deploy-no-azure-container-apps), passo 7 |
+| Deploy em nuvem com URL pública e HTTPS válido | ✅ | https://oficinastatus.com.br; [Deploy no Azure](#deploy-no-azure-container-apps), passos 7 e 9 |
 
 ### Anexo A: Telegram (A.3.7, A.5 e A.7)
 
@@ -466,7 +477,7 @@ Onde a evidência é um print que só o grupo pode tirar, aparece **print penden
 | `getMe` respondendo `ok: true` | ✅ | conferido em 11/11/2026 |
 | Deep link de vínculo gravando o `chat_id` | ✅ | teste "o deep link vincula o chat e funciona para cliente sem e-mail" |
 | Envio com o `message_id` em `mensagens.id_externo` | ✅ | teste "envio grava o message_id" |
-| `setWebhook` com `secret_token` e 401 quando o cabeçalho não confere | ✅ 401 · ⏳ URL definitiva | teste "webhook recusa quem não traz o segredo certo"; registro e `getWebhookInfo` no domínio: [`docs/deploy/telegram-webhook.txt`](docs/deploy/telegram-webhook.txt) |
+| `setWebhook` com `secret_token` e 401 quando o cabeçalho não confere | ✅ | teste "webhook recusa quem não traz o segredo certo"; 401 em produção; `getWebhookInfo` com a URL do domínio: [`docs/deploy/telegram-webhook.txt`](docs/deploy/telegram-webhook.txt) |
 | Mensagens recebidas e cliques de botão persistidos | ✅ | testes "Aprovar pelo botão…" e "update repetido é processado uma vez…" |
 | Tratamento de 429 e de 403 | ✅ | testes "429 espera o retry_after" e "403 desativa o vínculo" |
 | Nomes do modelo de dados A.5 (`canais_usuario`, `mensagens`, enums `plataforma_msg` e `status_msg`) | ✅ | [`002_telegram.sql`](server/migrations/002_telegram.sql) |
@@ -477,13 +488,13 @@ Onde a evidência é um print que só o grupo pode tirar, aparece **print penden
 | Item do B.8 | Situação | Evidência |
 |---|---|---|
 | Provedor escolhido e justificado | ✅ | [Deploy no Azure](#deploy-no-azure-container-apps): Azure, caminho 2, porque a assinatura gratuita não libera VMs |
-| Aplicação rodando em máquina de nuvem, sem túnel | ✅ | https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io (`/api/saude` → 200) |
+| Aplicação rodando em máquina de nuvem, sem túnel | ✅ | https://oficinastatus.com.br, no Azure Container Apps (`/api/saude` → 200) |
 | Banco em serviço gerenciado | ✅ · **print pendente** | String sem a senha no README. Print: *Overview* do `oficinastatus-db-breno`, com *Burstable B1ms* |
 | Banco fechado para a internet | ✅ · **print pendente** | Acesso público desligado e só o Private Endpoint (passo 5). Prints: *Networking* do servidor com *Public access: Disabled* e a conexão do `pe-oficinastatus-db` |
 | Migrations rodando contra o banco da nuvem | ✅ | [`docs/deploy/migrations-azure.log`](docs/deploy/migrations-azure.log): `Migrations aplicadas: 001_inicial.sql, 002_telegram.sql` |
-| Domínio apontado por DNS | ⏳ | registros criados no Registro.br e ainda não publicados ([passo 9](#9-domínio-próprio-oficinastatuscombr)); depois, `nslookup oficinastatus.com.br` → `4.238.147.212` · **print pendente** |
-| HTTPS válido | ✅ no endereço do Azure · ⏳ no domínio | Endereço do Azure: certificado *Microsoft TLS G2 RSA CA OCSP 04*, TLS 1.3. No domínio, depende do DNS · **print pendente** (cadeado) |
-| Webhook da plataforma usando a URL definitiva | ⏳ | depende do domínio; hoje o webhook ainda aponta para um túnel antigo · **print pendente** |
+| Domínio apontado por DNS | ✅ · **print pendente** | `nslookup oficinastatus.com.br` → `4.238.147.212`; `www` em CNAME ([passo 9](#9-domínio-próprio-oficinastatuscombr)). Print: o `nslookup` e a zona no Registro.br |
+| HTTPS válido | ✅ · **print pendente** | certificado gerenciado da raiz e do `www`, emitido pela *GeoTrust TLS RSA CA G1* (DigiCert). Print: o cadeado no navegador, com o emissor |
+| Webhook da plataforma usando a URL definitiva | ✅ · **print pendente** | `getWebhookInfo` com `https://oficinastatus.com.br/webhook/telegram` ([`telegram-webhook.txt`](docs/deploy/telegram-webhook.txt)). Print: o bot respondendo a um `/start` |
 | Documentação do caminho de DNS e certificado | ✅ | [passo 9](#9-domínio-próprio-oficinastatuscombr) e [B.9](#roteiro-de-pesquisa-b9), perguntas 4 a 7 |
 | Controle de custo | ✅ · **print pendente** | Orçamento de US$ 100 com alertas de 25/50/100 % ([Custo](#custo-e-controle-de-gasto)). Prints: o orçamento com os alertas e o *Cost analysis* com o consumo |
 | Segredos no cofre do provedor, ou no mínimo fora do Git (B.4 e B.7) | ✅ | secrets do Container Apps; nada de `.env` na imagem nem no Git |
