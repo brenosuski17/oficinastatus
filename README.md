@@ -103,7 +103,7 @@ Para rodar sem Docker como em produção, com um único servidor entregando a AP
 
 Testes automatizados: `npm test --prefix server`, com o PostgreSQL do Compose no ar. Cada arquivo de teste usa um schema próprio, apagado no final, sem tocar nos seus dados. Para usar outro servidor, defina `TEST_DATABASE_URL`.
 
-Para publicar na nuvem, veja [Deploy no Azure for Students](#deploy-no-azure-for-students).
+Para publicar na nuvem, veja [Deploy no Azure (Container Apps)](#deploy-no-azure-container-apps).
 
 Lint: `npm run lint` (ESLint). A cada push e pull request, o [GitHub Actions](.github/workflows/ci.yml) roda o lint, os testes com um serviço PostgreSQL e o build do site.
 
@@ -178,203 +178,219 @@ A consulta por placa é um serviço pago, porque não existe API oficial gratuit
 ### FIPE (Parallelum)
 Funciona sem configurar nada, dentro do limite diário gratuito. Para aumentar o limite, use um token do [fipe.online](https://fipe.online) em `FIPE_TOKEN`.
 
-## Deploy no Azure for Students
+## Deploy no Azure (Container Apps)
 
-**Provedor escolhido:** Microsoft Azure, com o Azure for Students, que não pede cartão de crédito e inclui um Flexible Server de PostgreSQL gratuito por 12 meses.
-**Caminho:** máquina virtual com Docker (caminho 1 do Anexo B), que mostra a máquina, o firewall, o DNS e o certificado.
+**No ar:** https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io
 
-| Peça | Serviço |
-|---|---|
-| Aplicação | VM Linux **B1s**, com `docker-compose.prod.yml` |
-| HTTPS | Caddy na própria VM, com certificado do Let's Encrypt |
-| Banco | **Azure Database for PostgreSQL Flexible Server B1MS**, com `sslmode=require` |
-| Webhook | `https://<seu-domínio>/webhook/telegram`, URL fixa e sem túnel |
+**Provedor escolhido:** Microsoft Azure, na **conta gratuita** (assinatura *Azure subscription 1*, com **US$ 200** de crédito).
+**Caminho:** **serviço de contêiner gerenciado** (caminho 2 do Anexo B.3), com o **Azure Container Apps**.
 
-**Atenção ao crédito:** o Anexo B fala em US$ 200, mas a [página do Azure for Students](https://azure.microsoft.com/en-us/free/students) oferece **US$ 100**. Confira o valor da sua conta.
+**Por que o caminho 2:** o grupo começou pelo caminho 1, com uma VM e o Caddy. Mas a assinatura gratuita não libera nenhum tamanho de máquina virtual: na criação da VM, todos os tamanhos voltam com `NotAvailableForSubscription`. O Container Apps recebe a mesma imagem do `Dockerfile` e entrega o endereço público com HTTPS. Os arquivos do caminho 1 (`docker-compose.prod.yml`, `Caddyfile`, `deploy/instalar-vm.sh`) continuam no repositório como alternativa, mas não estão em uso. O Anexo B avisa que este caminho esconde parte da infraestrutura. Por isso a rede do banco ficou explícita, com VNet e Private Endpoint (veja o passo 5), e o domínio próprio continua obrigatório (passo 9).
 
-**Falta testar no Azure real:** este roteiro foi escrito a partir da documentação. O `deploy/instalar-vm.sh` foi testado num container Ubuntu 24.04, e o compose de produção foi conferido localmente, com um banco local e sem o Let's Encrypt. Os menus do portal podem ter nomes um pouco diferentes.
+| Peça | Serviço | Recurso em `rg-oficinastatus` (Brazil South) |
+|---|---|---|
+| Aplicação | **Azure Container Apps**, plano de consumo, 0,25 vCPU e 0,5 GiB, **1 réplica** | `oficinastatus`, no ambiente `oficinastatus-env` |
+| Imagem | **Azure Container Registry Basic**, puxada pela identidade gerenciada do app (papel AcrPull, sem senha) | `oficinastatusbreno` |
+| Banco | **Azure Database for PostgreSQL Flexible Server**, Burstable **B1ms**, 32 GB, PostgreSQL 17, sem alta disponibilidade | `oficinastatus-db-breno`, banco `oficina` |
+| Rede do banco | **VNet** + **Private Endpoint** + zona DNS privada; **acesso público desligado** | `vnet-oficinastatus`, `pe-oficinastatus-db`, `privatelink.postgres.database.azure.com` |
+| Segredos | **Secrets do Container Apps** (`database-url`, `jwt-secret`, `telegram-*`), não ficam em arquivo | no próprio app |
+| HTTPS | Certificado gerenciado da Microsoft no domínio `*.azurecontainerapps.io`; HTTP redireciona para HTTPS | ingress do app |
+| Logs | Log Analytics (5 GB por mês grátis) | `workspace-rgoficinastatuslwvb` |
 
-### Passo a passo
+String de conexão, **sem a senha**:
+```
+postgresql://oficina_admin:****@oficinastatus-db-breno.postgres.database.azure.com:5432/oficina?sslmode=require
+```
 
-A ordem importa: o certificado só sai depois que o DNS aponta para a VM, e o DNS precisa do IP da VM. Anote os valores marcados com `<preencher>` à medida que aparecerem: são as respostas do [roteiro B.9](#roteiro-de-pesquisa-b9).
+### Como foi feito
 
-**Antes de criar qualquer recurso:** simule a VM e o banco na [calculadora de preços](https://azure.microsoft.com/pricing/calculator/) e anote o preço (pergunta 1).
+Comandos do [Azure CLI](https://learn.microsoft.com/cli/azure/), com `az login` feito. No Windows, se o `az` não estiver no PATH, use `"C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"`.
 
-#### 1. Alerta de gasto
-*Cost Management → Budgets → + Add*, no escopo da assinatura *Azure for Students*.
-1. Orçamento mensal (*Monthly*) de **US$ 100**.
-2. Três alertas do tipo *Actual*, em **25 %, 50 % e 100 %**, que equivalem a US$ 25, 50 e 100, como pede o Anexo B. Em todos, coloque o seu e-mail.
-3. Adicione `azure-noreply@microsoft.com` aos remetentes confiáveis do e-mail.
+#### 1. Grupo e banco
+O grupo `rg-oficinastatus` e o servidor `oficinastatus-db-breno` foram criados pelo portal, com *Burstable B1ms*, 32 GB, sem alta disponibilidade e com o administrador `oficina_admin`. O banco da aplicação:
+```bash
+az postgres flexible-server db create -g rg-oficinastatus -s oficinastatus-db-breno -n oficina
+```
 
-> **[Print 1: orçamento com os três alertas configurados]**
+#### 2. Registro da imagem (ACR Basic)
+A imagem é montada na máquina do grupo e enviada ao registro. O `.dockerignore` deixa de fora o `.env`, o `server/data` e o `golf.glb`, cuja licença proíbe redistribuir.
+```bash
+az provider register -n Microsoft.App --wait
+az provider register -n Microsoft.OperationalInsights --wait
+az provider register -n Microsoft.ContainerRegistry --wait
+az acr create -g rg-oficinastatus -n oficinastatusbreno --sku Basic -l brazilsouth
+docker build -t oficinastatusbreno.azurecr.io/oficinastatus:<commit> .
+az acr login -n oficinastatusbreno
+docker push oficinastatusbreno.azurecr.io/oficinastatus:<commit>
+```
 
-#### 2. Grupo de recursos
-*Resource groups → Create*, com um nome como `oficinastatus-rg`. Escolha uma região permitida pela assinatura: o Azure for Students restringe algumas, e o portal avisa. Crie **tudo** neste grupo e nesta região. No fim do semestre, apagar o grupo apaga tudo.
+#### 3. Rede: VNet, Private Endpoint e DNS privado
+```bash
+az network vnet create -g rg-oficinastatus -n vnet-oficinastatus -l brazilsouth --address-prefixes 10.20.0.0/16 \
+  --subnet-name snet-containerapps --subnet-prefixes 10.20.0.0/27
+az network vnet subnet update -g rg-oficinastatus --vnet-name vnet-oficinastatus -n snet-containerapps --delegations Microsoft.App/environments
+az network vnet subnet create -g rg-oficinastatus --vnet-name vnet-oficinastatus -n snet-banco --address-prefixes 10.20.1.0/28
+az network private-endpoint create -g rg-oficinastatus -n pe-oficinastatus-db -l brazilsouth --vnet-name vnet-oficinastatus \
+  --subnet snet-banco --private-connection-resource-id <id do servidor> --group-id postgresqlServer --connection-name pe-oficinastatus-db
+az network private-dns zone create -g rg-oficinastatus -n privatelink.postgres.database.azure.com
+az network private-dns link vnet create -g rg-oficinastatus -z privatelink.postgres.database.azure.com -n link-oficinastatus \
+  -v vnet-oficinastatus --registration-enabled false
+az network private-endpoint dns-zone-group create -g rg-oficinastatus --endpoint-name pe-oficinastatus-db -n padrao \
+  --private-dns-zone privatelink.postgres.database.azure.com --zone-name postgres
+```
+Dentro da VNet, o nome `oficinastatus-db-breno.postgres.database.azure.com` passa a apontar para o IP privado `10.20.1.4`. A `DATABASE_URL` continua a mesma, e o certificado TLS do servidor continua conferindo.
 
-#### 3. Máquina virtual B1s
-*Virtual machines → Create → Azure virtual machine*:
-1. **Imagem:** Ubuntu Server 24.04 LTS (x64). **Tamanho:** `Standard_B1s` (1 vCPU, 1 GB). Pode estar em *See all sizes*.
-2. **Autenticação:** chave SSH. Usuário `azureuser`. Baixe a chave `.pem` quando o portal oferecer.
-3. **Portas de entrada:** SSH (22), HTTP (80) e HTTPS (443).
-4. **Disco:** o padrão, sem aumentar. **Rede:** IP público novo com atribuição *Static*.
-5. *Review + create*. Depois de criada, em *Networking*, restrinja a regra da porta 22 ao seu IP (*Source: My IP address*).
+#### 4. Ambiente e aplicação
+```bash
+az containerapp env create -g rg-oficinastatus -n oficinastatus-env -l brazilsouth \
+  --infrastructure-subnet-resource-id <id da snet-containerapps>
+az containerapp create -g rg-oficinastatus -n oficinastatus --environment oficinastatus-env \
+  --image oficinastatusbreno.azurecr.io/oficinastatus:<commit> \
+  --registry-server oficinastatusbreno.azurecr.io --registry-identity system \
+  --ingress external --target-port 3333 --cpu 0.25 --memory 0.5Gi --min-replicas 1 --max-replicas 1 \
+  --secrets telegram-token=… telegram-bot-username=… telegram-webhook-secret=… jwt-secret=<aleatório> \
+  --env-vars NODE_ENV=production APP_URL=https://<fqdn> TELEGRAM_TOKEN=secretref:telegram-token \
+    TELEGRAM_BOT_USERNAME=secretref:telegram-bot-username TELEGRAM_WEBHOOK_SECRET=secretref:telegram-webhook-secret \
+    JWT_SECRET=secretref:jwt-secret
+```
+- **Uma réplica no máximo:** a fila de envio fica em memória, e as transações são serializadas no processo.
+- **Mínimo de uma réplica:** evita a espera da primeira requisição durante a apresentação. Para economizar depois, use `--min-replicas 0`.
+- **`JWT_SECRET` fixo:** fica num secret, porque o contêiner não tem disco persistente. Sem ele, cada reinício geraria um segredo novo e deslogaria todo mundo.
 
-- IP público da VM: `<preencher>`
-
-> **[Print 2: Overview da VM, com o tamanho B1s, a região e o IP público]**
-> **[Print 3: regras de entrada da VM, com 80 e 443 abertas e 22 só para o seu IP]**
-
-#### 4. PostgreSQL Flexible Server B1MS
-*Azure Database for PostgreSQL flexible servers → Create*:
-1. **Workload type:** *Development*. **Compute + storage:** *Burstable*, **B1ms**, **32 GB**, sem *autogrow*. **Alta disponibilidade:** desligada. **Backup:** 7 dias, sem redundância geográfica.
-2. **Versão:** a mais recente oferecida. **Autenticação:** *PostgreSQL authentication only*. Crie um usuário administrador, como `oficinaadmin`, e uma senha forte, diferente da de desenvolvimento.
-3. **Networking:** *Public access (allowed IP addresses)*. Em *Firewall rules*, adicione só o IP da VM do passo 3 (veja o passo 5). **Não** marque *Allow public access from any Azure service*.
-4. Depois de criado, em *Databases → + Add*, crie o banco `oficina`.
-5. Monte a `DATABASE_URL` com o *Server name* do *Overview*:
-   ```
-   DATABASE_URL=postgresql://oficinaadmin:<senha>@<nome>.postgres.database.azure.com:5432/oficina?sslmode=require
-   ```
-   Caracteres especiais da senha vão em formato de URL (`@` → `%40`, `:` → `%3A`, `/` → `%2F`).
-
-- *Server name*: `<preencher>`
-- String de conexão, **sem a senha**: `postgresql://oficinaadmin:****@<preencher>.postgres.database.azure.com:5432/oficina?sslmode=require`
-
-> **[Print 4: Overview do banco, com o Server name e o tamanho Burstable B1ms]**
+A `DATABASE_URL` entra por último. O script [`deploy/definir-banco-azure.ps1`](deploy/definir-banco-azure.ps1) pede a senha no terminal, sem mostrá-la, monta a URL com `sslmode=require` e a grava no secret `database-url`:
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\definir-banco-azure.ps1
+```
+Esse script também cria uma revisão nova do app, que sobe já conectada ao banco.
 
 #### 5. Banco fechado para a internet
-Em *Networking* do servidor, confirme que existe **uma única regra**, com início e fim iguais ao IP da VM. Não pode existir regra `0.0.0.0` a `255.255.255.255`, nem a opção *Allow public access from any Azure service*. Se precisar acessar o banco do seu computador, adicione o seu IP só durante o uso e retire depois.
-
-> **[Print 5: regra de firewall do banco mostrando só o IP da VM]**
-
-#### 6. Zona de DNS, nameservers e registro A
-1. *DNS zones → Create*, no mesmo grupo, com o nome do domínio sem `www` (ex.: `oficinastatus.com.br`).
-2. No *Overview* da zona, copie os **quatro** nameservers (`ns1-XX.azure-dns.com`, `.net`, `.org` e `.info`).
-3. No painel do registrador, troque os servidores DNS do domínio por esses quatro. No Registro.br: *Domínio → DNS → Alterar servidores DNS*.
-4. Na zona, *+ Record set*: nome `@`, tipo **A**, TTL **300** segundos, valor igual ao IP da VM.
-5. Espere a delegação, que pode levar de minutos a horas, e confira do seu computador:
-   ```bash
-   nslookup -type=NS <seu-domínio>   # devem aparecer os nameservers do Azure
-   nslookup <seu-domínio>            # deve devolver o IP da VM
-   ```
-
-- Domínio: `<preencher>` · Registrador: `<preencher>`
-- Nameservers: `<preencher os quatro>`
-
-> **[Print 6: zona de DNS com os nameservers e o registro A]**
-> **[Print 7: tela do registrador com os nameservers do Azure]**
-> **[Print 8: saída do nslookup devolvendo o IP da VM]**
-
-#### 7. Preparar a VM
-Do seu computador, entre na VM e rode o script de instalação. Ele cria o swap, instala o Docker e o plugin compose, clona este repositório em `~/oficinastatus` e cria o `server/.env` com `JWT_SECRET` e `TELEGRAM_WEBHOOK_SECRET` aleatórios:
 ```bash
-ssh -i <chave>.pem azureuser@<IP-da-VM>
-curl -fsSL https://raw.githubusercontent.com/brenosuski17/oficinastatus/main/deploy/instalar-vm.sh -o instalar-vm.sh
-bash instalar-vm.sh
-exit   # saia e entre de novo, para o usuário entrar no grupo docker
+az postgres flexible-server update -g rg-oficinastatus -n oficinastatus-db-breno --public-access Disabled
 ```
+O plano era deixar no firewall do banco só os IPs de saída do app. Só que, no Container Apps de consumo, eles vêm de um **pool regional compartilhado**: o app recebeu **181 IPs** do Brazil South, usados também por aplicativos de outros clientes do Azure, e o pool pode mudar. Liberar esses IPs equivaleria a abrir o banco para outros clientes. Por isso o banco ficou **sem acesso público e sem nenhuma regra de firewall**. O Azure nem aceita mais criar regras (`Firewall rule operations are not supported for a server without public access enabled`), e a única entrada é o Private Endpoint, dentro da VNet do app. Testado de fora: o nome do banco não resolve para um IP público, e a porta 5432 não responde.
 
-#### 8. Preencher o `.env` de produção
+A outra opção, um NAT Gateway com um único IP de saída fixo para colocar no firewall, custaria cerca de US$ 37 por mês, e o Anexo B.2 cita o NAT Gateway como caro e desnecessário.
+
+#### 6. Migrations no banco da nuvem
+O `CMD` do `Dockerfile` roda `node src/migrar.js` antes de subir o servidor. Na primeira subida, com o banco `oficina` vazio, o log mostra:
+```
+Migrations aplicadas: 001_inicial.sql, 002_telegram.sql
+```
+O log completo está em [`docs/deploy/migrations-azure.log`](docs/deploy/migrations-azure.log). Ele foi obtido com:
 ```bash
-ssh -i <chave>.pem azureuser@<IP-da-VM>
-nano ~/oficinastatus/server/.env
+az containerapp logs show -g rg-oficinastatus -n oficinastatus --type console --tail 100
 ```
-Cada variável está comentada no arquivo, que é cópia do [`server/.env.production.example`](server/.env.production.example). O mínimo:
+No Windows, se o comando falhar com `UnicodeEncodeError` por causa do `✔` do log, rode o Python do CLI em modo UTF-8:
+```
+"C:\Program Files\Microsoft SDKs\Azure\CLI2\python.exe" -X utf8 -IBm azure.cli containerapp logs show …
+```
+**Não rode o seed em produção:** ele apaga os dados e usa a senha `oficina123` em todas as contas.
 
-| Variável | Valor |
+#### 7. Testes pelo HTTPS (11/11/2026)
+| Teste | Resultado |
 |---|---|
-| `DOMINIO` | o domínio, sem `https://` |
-| `APP_URL` | `https://` + o domínio |
-| `DATABASE_URL` | a do passo 4, com `?sslmode=require` |
-| `TELEGRAM_TOKEN`, `TELEGRAM_BOT_USERNAME` | do @BotFather |
-| `NOME_OFICINA`, `TELEFONE_OFICINA`, `ENDERECO_OFICINA` | dados da oficina |
+| `GET /` e `/entrar` | 200, site carregado |
+| `GET /api/saude` | 200, `{"ok":true}` |
+| `GET /api/auth/estado` (lê o banco) | 200 |
+| `http://` | 301 para `https://` |
+| `POST /webhook/telegram` sem o segredo | 401 |
+| Certificado | `CN=graystone-3f5d3230.brazilsouth.azurecontainerapps.io`, emitido por *Microsoft TLS G2 RSA CA OCSP 04*, TLS 1.3, aceito sem aviso (`Verify return code: 0`) |
 
-O `server/.env` fica só na VM, com `chmod 600` e fora do Git. O ideal do Anexo B é guardar os segredos no Azure Key Vault; este arquivo é o mínimo aceito, com senha forte e própria de produção.
+Logo depois do deploy, crie o administrador em `/entrar`. Enquanto ele não existir, o primeiro acesso fica aberto a qualquer um que abra o endereço.
 
-#### 9. Subir a aplicação (migrations no banco da nuvem)
+#### 8. Atualizar a aplicação
 ```bash
-cd ~/oficinastatus
-docker compose --env-file server/.env -f docker-compose.prod.yml up -d --build   # a primeira vez leva alguns minutos
-docker compose --env-file server/.env -f docker-compose.prod.yml logs app        # deve mostrar "Migrations aplicadas: 001_..., ..."
+docker build -t oficinastatusbreno.azurecr.io/oficinastatus:<commit> .
+docker push oficinastatusbreno.azurecr.io/oficinastatus:<commit>
+az containerapp update -g rg-oficinastatus -n oficinastatus --image oficinastatusbreno.azurecr.io/oficinastatus:<commit>
 ```
-O banco está vazio, então as migrations criam o esquema do zero, o que prova o versionamento. **Não rode o seed em produção.**
+Cada atualização cria uma revisão nova, que aplica as migrations pendentes antes de subir.
 
-> **[Print 9: log das migrations rodando no banco da nuvem]**
+#### 9. Domínio próprio (falta)
+O Anexo B.3 exige domínio próprio também no caminho 2. O domínio vai sair pelo GitHub Student Developer Pack. Quando sair:
+1. **Zona e nameservers:** *DNS zones → Create* no `rg-oficinastatus`. Os **quatro** nameservers do *Overview* (`azure-dns.com`, `.net`, `.org` e `.info`) vão no painel do registrador.
+2. **Registros:** num subdomínio, como `www`, crie um **CNAME** para `oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io` e um **TXT** `asuid.www` com o *Custom domain verification ID* do app:
+   ```bash
+   az containerapp show -g rg-oficinastatus -n oficinastatus --query properties.customDomainVerificationId -o tsv
+   ```
+   Na raiz (`@`), o CNAME não é permitido: use um **registro A** para o IP estático do ambiente (`az containerapp env show … --query properties.staticIp`) e um TXT `asuid`.
+3. **Certificado gerenciado:** é gratuito e o Azure renova sozinho.
+   ```bash
+   az containerapp hostname add -g rg-oficinastatus -n oficinastatus --hostname www.<domínio>
+   az containerapp hostname bind -g rg-oficinastatus -n oficinastatus --hostname www.<domínio> \
+     --environment oficinastatus-env --validation-method CNAME
+   ```
+4. **`APP_URL`:** troque para o domínio novo, com `az containerapp update --set-env-vars APP_URL=https://www.<domínio>`.
+5. **Webhook:** registre no domínio definitivo com `npm run webhook -- --url https://www.<domínio>` (usa o token do `server/.env` local, o mesmo do secret).
 
-#### 10. HTTPS pelo Caddy
-Com o DNS apontando para a VM e as portas 80 e 443 abertas, o Caddy pede o certificado ao Let's Encrypt na primeira subida. Abra `https://<seu-domínio>` e clique no cadeado. Se o navegador acusar o certificado, veja `docker compose --env-file server/.env -f docker-compose.prod.yml logs caddy`. O erro mais comum é o DNS ainda não apontar para a VM.
+#### 10. Limitações conhecidas
+- **Fotos das OS:** ficam em `server/data/uploads`, no disco do contêiner, e **se perdem a cada nova revisão ou reinício**. Para guardá-las de verdade, seria preciso montar um volume do Azure Files.
+- **E-mail (SMTP):** ainda não foi configurado no app. Para ligar, grave os secrets com `az containerapp secret set` e referencie-os nas variáveis com `secretref:`, como nos do Telegram.
 
-Em seguida, crie o administrador em `https://<seu-domínio>/entrar`.
+### Custo e controle de gasto
 
-- Emissor do certificado: `<preencher>` (ex.: Let's Encrypt, R11)
+Estimativa com a menor configuração de cada peça. Os preços são de referência; confira os de Brazil South na [calculadora de preços](https://azure.microsoft.com/pricing/calculator/).
 
-> **[Print 10: cadeado no navegador, com o emissor do certificado]**
+| Peça | Custo aproximado por mês |
+|---|---|
+| PostgreSQL B1ms + 32 GB | o maior item: confira na calculadora |
+| Container Apps, 1 réplica de 0,25 vCPU e 0,5 GiB | de ~US$ 4, com o app ocioso, a ~US$ 15, com ele ativo o mês todo, já descontada a cota grátis do plano de consumo |
+| ACR Basic | ~US$ 5 |
+| Private Endpoint + zona DNS privada | ~US$ 8 |
+| Log Analytics | dentro dos 5 GB grátis |
 
-#### 11. Webhook do Telegram na URL definitiva
-```bash
-docker compose --env-file server/.env -f docker-compose.prod.yml exec app node scripts/webhook.js --url https://<seu-domínio>
-```
-O comando confere se o domínio entrega o webhook (resposta 401 sem o segredo), registra o `setWebhook` com o segredo e mostra o `getWebhookInfo`. Para testar, mande `/start` para o bot. O túnel do `npm run webhook` sem `--url` é só para desenvolvimento.
-
-> **[Print 11: getWebhookInfo apontando para https://<seu-domínio>/webhook/telegram]**
-
-#### 12. Conferir e controlar o custo
-Repasse o [checklist B.8](#checklist-da-entrega-b8). Em *Cost Management → Cost analysis*, confira o consumo até o momento.
-
-> **[Print 12: consumo da assinatura até o momento]**
-
-Entre uma aula e outra, pare a VM e o banco (pergunta 9). Para voltar: *Start* no banco, *Start* na VM, e os containers sobem sozinhos (`restart: unless-stopped`). As fotos das OS ficam no volume `dados_app`, no disco da VM, sem backup automático. O banco tem os backups do serviço gerenciado.
+- **Alerta de gasto:** em *Cost Management → Budgets → + Add*, no escopo da assinatura *Azure subscription 1*, crie um orçamento mensal de US$ 100 com alertas *Actual* em **25 %, 50 % e 100 %**, que equivalem a US$ 25, 50 e 100, como pede o Anexo B.2. Os custos são avaliados a cada 24 horas, então o alerta não é instantâneo ([tutorial](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)).
+- **Para economizar entre as aulas:**
+  ```bash
+  az containerapp update -g rg-oficinastatus -n oficinastatus --min-replicas 0   # o app dorme sem acesso
+  az postgres flexible-server stop -g rg-oficinastatus -n oficinastatus-db-breno
+  ```
+  O [Azure religa o banco sozinho depois de 7 dias](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server). Parado, o armazenamento e os backups continuam sendo cobrados.
+- **No fim do semestre:** `az group delete -n rg-oficinastatus` apaga tudo, depois da apresentação e do artigo.
 
 ### Roteiro de pesquisa (B.9)
 
-**1. Como criar a menor instância de máquina virtual no seu provedor, e quanto ela custa por mês?**
-Pelo portal, em *Virtual machines → Create* (passo 3). A menor da família burstable usada aqui é a **Standard_B1s** (1 vCPU, 1 GB de RAM). O Azure for Students inclui 750 horas por mês de B1s nos primeiros 12 meses, o que cobre uma VM ligada o mês inteiro. Fora do benefício, e para o disco e o IP, o custo sai do crédito. Mudar o tamanho da VM tira o benefício.
-- Preço na calculadora em `<preencher data>`: US$ `<preencher>` por mês, na região `<preencher>`.
+**1. Como criar a menor instância no seu provedor, e quanto ela custa por mês?**
+No caminho 2, a menor instância é uma réplica do Container Apps com 0,25 vCPU e 0,5 GiB, criada com `az containerapp create --cpu 0.25 --memory 0.5Gi` (passo 4). A estimativa está na tabela de custos acima. A menor VM burstable (`Standard_B1s`) não está disponível na assinatura gratuita: devolve `NotAvailableForSubscription`.
 
 **2. Como criar uma instância PostgreSQL gerenciada, e como descobrir o endereço de conexão dela?**
-Em *Azure Database for PostgreSQL flexible servers → Create*, com *Burstable B1ms* e 32 GB, que o benefício inclui por 12 meses (passo 4). O endereço é o *Server name* do *Overview*, no formato `<nome>.postgres.database.azure.com`, porta 5432. O TLS é obrigatório, daí o `?sslmode=require`. Com a versão atual do pacote `pg`, `sslmode=require` também confere o certificado do servidor. Se a conexão falhar por causa do certificado, leia a mensagem do erro antes de trocar para `uselibpqcompat=true&sslmode=require`, que criptografa mas não confere o certificado.
+Em *Azure Database for PostgreSQL flexible servers → Create*, com *Burstable B1ms* e 32 GB (passo 1). O endereço é o *Server name* do *Overview*, `oficinastatus-db-breno.postgres.database.azure.com`, na porta 5432. O TLS é obrigatório, daí o `?sslmode=require`. Com a versão atual do pacote `pg`, `require` também confere o certificado do servidor, como mostra o aviso no log das migrations.
 
 **3. Como autorizar apenas a sua aplicação a acessar o banco?**
-Com o acesso público restrito por firewall: uma regra só, com o IP público estático da VM (passo 5). Sem a opção *Allow public access from any Azure service*, que liberaria qualquer recurso do Azure, inclusive de outros clientes, e nunca com `0.0.0.0/0`. A alternativa mais fechada é o acesso privado (VNet), que tira o IP público do banco, mas exige configurar a rede virtual e foge do escopo.
+Com acesso privado, e não por firewall (passo 5). O app roda numa VNet, e o banco só é alcançável por um Private Endpoint nela, com o acesso público desligado. Os IPs de saída do Container Apps de consumo são compartilhados, e a opção *Allow public access from any Azure service* liberaria qualquer recurso do Azure, inclusive de outros clientes. Nunca `0.0.0.0/0`.
 
 **4. Onde fica o serviço de DNS do provedor, e como se cria uma zona para o seu domínio?**
-No **Azure DNS**, em *DNS zones → Create*, com o nome do domínio sem `www` (passo 6). A zona custa centavos por mês. Veja o [tutorial da Microsoft](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns).
+No **Azure DNS**, em *DNS zones → Create*, com o nome do domínio sem `www` (passo 9). A zona custa centavos por mês ([tutorial](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns)).
 
 **5. Quais nameservers o provedor devolveu, e onde eles são informados no registrador do domínio?**
-O Azure devolve quatro, um de cada domínio (`azure-dns.com`, `.net`, `.org` e `.info`), listados no *Overview* da zona. Os **quatro** são informados no painel do registrador, na opção de alterar os servidores DNS. É este passo que entrega o domínio ao Azure.
-- Nameservers e registrador: ver o passo 6.
+O Azure devolve quatro, um de cada domínio (`azure-dns.com`, `.net`, `.org` e `.info`), listados no *Overview* da zona. Os quatro vão no painel do registrador, na opção de alterar os servidores DNS. É esse passo que entrega o domínio ao Azure.
+- Nameservers e registrador: `<preencher quando o domínio sair>`
 
 **6. O seu caso pede registro A ou CNAME? Por quê?**
-**Registro A**, porque a aplicação está numa VM com IP público estático. CNAME serviria se o provedor entregasse um nome em vez de um IP, como num balanceador ou num serviço de contêiner. Além disso, a raiz do domínio (`@`) não aceita CNAME.
+**CNAME** num subdomínio (`www`), porque o Container Apps entrega um **nome** (`oficinastatus.graystone-3f5d3230…azurecontainerapps.io`), não um IP da aplicação. A raiz do domínio não aceita CNAME; nela vai um registro A para o IP estático do ambiente. Nos dois casos, o TXT `asuid` prova ao Azure que o domínio é seu.
 
-**7. Qual é o mecanismo de certificado do provedor, e ele funciona na arquitetura que vocês escolheram? Se não funcionar, qual é a alternativa?**
-Os certificados gerenciados do Azure são do App Service, do Front Door e do Application Gateway. Eles não se instalam numa VM comum, então **não funcionam nesta arquitetura**. A alternativa do Anexo B é o **Let's Encrypt com o Caddy** na própria VM (veja o `Caddyfile`). O Caddy pede e renova o certificado sozinho e guarda o certificado no volume `caddy_dados`, para não pedir de novo a cada reinício. Exige o DNS já apontando para a VM e as portas 80 e 443 abertas.
+**7. Qual é o mecanismo de certificado do provedor, e ele funciona na arquitetura que vocês escolheram?**
+Funciona. O Container Apps tem **certificado gerenciado gratuito**, que o Azure emite e renova sozinho, para o domínio próprio (passo 9). O endereço `*.azurecontainerapps.io` já vem com o certificado da Microsoft, testado no passo 7. Por isso o Caddy e o Let's Encrypt do caminho 1 não são necessários.
 
 **8. Como configurar um alerta de gasto por e-mail?**
-Em *Cost Management → Budgets*, com um orçamento mensal e alertas por percentual com o seu e-mail (passo 1). Com orçamento de US$ 100, os alertas de 25 %, 50 % e 100 % disparam em US$ 25, 50 e 100. Os custos são avaliados a cada 24 horas, então o alerta não é instantâneo. Veja o [tutorial da Microsoft](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets).
+Em *Cost Management → Budgets*, com orçamento mensal e alertas de 25 %, 50 % e 100 % (veja *Custo e controle de gasto*).
 
-**9. Como parar a VM e o banco entre uma aula e outra, e o que continua sendo cobrado mesmo parado?**
-- **VM:** *Stop* no portal, ou `az vm deallocate`. O estado precisa ser **Stopped (deallocated)**. Desligar pelo sistema da VM (`sudo shutdown`) mantém a máquina reservada, e o processamento continua sendo cobrado. Parada, ela ainda cobra o disco e o IP público estático.
-- **Banco:** *Stop* no portal, ou `az postgres flexible-server stop`. O [Azure religa o servidor sozinho depois de 7 dias](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server), então pare de novo se a pausa for maior. O armazenamento e os backups continuam sendo cobrados.
-- **No fim do semestre:** apague o grupo de recursos inteiro, depois da apresentação e do artigo.
-
-```bash
-az vm deallocate -g oficinastatus-rg -n <vm>
-az postgres flexible-server stop -g oficinastatus-rg -n <banco>
-```
+**9. Como parar a aplicação e o banco entre uma aula e outra, e o que continua sendo cobrado?**
+O app escala para zero com `--min-replicas 0`. Sem réplica rodando, não há cobrança de processamento, mas o ACR, o Private Endpoint e os logs continuam. O banco para com `az postgres flexible-server stop`, e o armazenamento e os backups continuam sendo cobrados.
 
 ### Checklist da entrega (B.8)
-- [ ] Provedor escolhido e justificado (início desta seção)
-- [ ] Aplicação no ar em `<preencher a URL>`, sem túnel
-- [ ] Banco gerenciado: print 4 e string de conexão sem a senha (passo 4)
-- [ ] Banco fechado para a internet: print 5
-- [ ] Migrations rodando no banco da nuvem: print 9
-- [ ] DNS: `nslookup` devolvendo o IP da VM (print 8)
-- [ ] HTTPS válido: cadeado sem aviso e emissor documentado (print 10)
-- [ ] Webhook do Telegram na URL definitiva: print 11
-- [ ] Caminho de DNS e certificado documentado (perguntas 4 a 7)
-- [ ] Controle de custo: prints 1 e 12
+- [x] Provedor escolhido e justificado (início desta seção)
+- [x] Aplicação no ar em https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io, sem túnel
+- [x] Banco gerenciado e string de conexão sem a senha
+- [x] Banco fechado para a internet: sem acesso público, só pelo Private Endpoint (passo 5)
+- [x] Migrations rodando no banco da nuvem: [`docs/deploy/migrations-azure.log`](docs/deploy/migrations-azure.log)
+- [x] HTTPS válido no endereço do Azure (passo 7)
+- [ ] Domínio próprio, DNS e certificado gerenciado (passo 9)
+- [ ] Webhook do Telegram na URL definitiva (passo 9)
+- [ ] Alerta de gasto configurado
+- [ ] Prints para o relatório: recursos do grupo, Private Endpoint, banco com acesso público desligado, log das migrations, cadeado no navegador e consumo da assinatura
 
-Fontes: [Azure for Students](https://azure.microsoft.com/en-us/free/students) · [Parar o Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server) · [Azure DNS](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns) · [Orçamentos no Cost Management](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets) · [Docker no Ubuntu](https://docs.docker.com/engine/install/ubuntu/) · [Caddy](https://caddyserver.com/docs/)
+Fontes: [Azure Container Apps](https://learn.microsoft.com/azure/container-apps/) · [Rede do Container Apps](https://learn.microsoft.com/azure/container-apps/networking) · [Private Link no Flexible Server](https://learn.microsoft.com/azure/postgresql/flexible-server/concepts-networking-private-link) · [Domínio próprio e certificado gerenciado](https://learn.microsoft.com/azure/container-apps/custom-domains-managed-certificates) · [Parar o Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/how-to-stop-server) · [Azure DNS](https://learn.microsoft.com/en-us/azure/dns/dns-delegate-domain-azure-dns) · [Orçamentos no Cost Management](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
 
 ## Estrutura
 
@@ -411,7 +427,10 @@ oficinastatus/
 │   ├── vistoria/                 # carro 3D, detecção da peça, painel de avarias
 │   ├── ui/                       # placa Mercosul, trilha de etapas, botões, modais, avisos
 │   └── lib/                      # API, login, formatos, etapas
-├── deploy/instalar-vm.sh         # prepara a VM Ubuntu do Azure (Docker, clone e .env)
+├── deploy/
+│   ├── definir-banco-azure.ps1   # grava a DATABASE_URL como secret do Container Apps (pede a senha)
+│   └── instalar-vm.sh            # caminho 1 (VM), não usado: prepara uma VM Ubuntu com Docker
+├── docs/deploy/                  # log das migrations no banco da nuvem
 ├── docs/                         # DER, fluxo de estados e telas
 ├── Dockerfile                    # imagem da aplicação (site + API)
 ├── docker-compose.yml            # desenvolvimento: aplicação + PostgreSQL

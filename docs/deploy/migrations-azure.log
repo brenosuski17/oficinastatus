@@ -1,0 +1,35 @@
+# Primeira subida do OficinaStatus no Azure Container Apps, com o banco oficina vazio no PostgreSQL Flexible Server
+# (acesso pelo Private Endpoint, DATABASE_URL com sslmode=require). O CMD do Dockerfile roda "node src/migrar.js"
+# antes de "node src/index.js": a linha "Migrations aplicadas" mostra o esquema criado do zero no banco da nuvem.
+# Obtido em 2026-11-11 com: az containerapp logs show -g rg-oficinastatus -n oficinastatus --revision oficinastatus--0000002 --type console
+# Horários em UTC. Os avisos SECURITY WARNING são do pacote pg: hoje ele trata sslmode=require como verify-full (confere o certificado).
+
+2026-11-11T02:24:12.6758222Z stderr F (node:8) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+2026-11-11T02:24:12.6758625Z stderr F In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+2026-11-11T02:24:12.6758833Z stderr F 
+2026-11-11T02:24:12.6758866Z stderr F To prepare for this change:
+2026-11-11T02:24:12.6758886Z stderr F - If you want the current behavior, explicitly use 'sslmode=verify-full'
+2026-11-11T02:24:12.6758905Z stderr F - If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+2026-11-11T02:24:12.6758923Z stderr F 
+2026-11-11T02:24:12.6758954Z stderr F See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+2026-11-11T02:24:12.6758973Z stderr F (Use `node --trace-warnings ...` to show where the warning was created)
+2026-11-11T02:24:12.9134781Z stdout F Migrations aplicadas: 001_inicial.sql, 002_telegram.sql
+2026-11-11T02:24:13.3828129Z stderr F (node:20) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+2026-11-11T02:24:13.3828495Z stderr F In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+2026-11-11T02:24:13.3828631Z stderr F 
+2026-11-11T02:24:13.3828648Z stderr F To prepare for this change:
+2026-11-11T02:24:13.3828662Z stderr F - If you want the current behavior, explicitly use 'sslmode=verify-full'
+2026-11-11T02:24:13.3828674Z stderr F - If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+2026-11-11T02:24:13.3828685Z stderr F 
+2026-11-11T02:24:13.3828696Z stderr F See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+2026-11-11T02:24:13.3828752Z stderr F (Use `node --trace-warnings ...` to show where the warning was created)
+2026-11-11T02:24:13.6444301Z stdout F 
+2026-11-11T02:24:13.6446227Z stdout F OficinaStatus API em http://localhost:3333
+2026-11-11T02:24:13.6446528Z stdout F   – email     Defina SMTP_HOST, SMTP_USER, SMTP_PASS e SMTP_FROM no .env
+2026-11-11T02:24:13.6446563Z stdout F   ✔ telegram  Bot @oficinastatus_breno_bot, webhook protegido por segredo
+2026-11-11T02:24:13.6447575Z stdout F   – placa     Defina PLACA_API_TOKEN para preencher o veículo pela placa
+2026-11-11T02:24:13.6448701Z stdout F   ✔ fipe      Parallelum sem token (limite diário gratuito)
+2026-11-11T02:24:13.6449223Z stdout F 
+2026-11-11T02:24:13.6449266Z stdout F   Primeiro acesso: abra https://oficinastatus.graystone-3f5d3230.brazilsouth.azurecontainerapps.io/entrar para criar o administrador.
+2026-11-11T02:24:13.6449295Z stdout F 
+2026-11-11T02:24:13.6456806Z stdout F   Webhook para o túnel em http://localhost:3334/webhook/telegram

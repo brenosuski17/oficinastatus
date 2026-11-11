@@ -5,5 +5,7 @@ server/.env
 # Licença Standard do Sketchfab proíbe redistribuir: cada um gera o seu (veja o README)
 client/public/modelos/golf.glb
 *.log
+# Evidência do deploy (log das migrations no banco da nuvem), sem segredos
+!docs/deploy/*.log
 .DS_Store
 projeto-integrador.pdf

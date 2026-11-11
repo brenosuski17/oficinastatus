@@ -23,7 +23,7 @@ npm test --prefix server    # testes de integração (node:test), devem passar s
 npm run build               # build de produção do client (o server serve client/dist)
 npm run lint                # ESLint em server e client; roda no CI (.github/workflows/ci.yml) com os testes e o build
 docker compose up --build   # ambiente completo: aplicação em :3333 + PostgreSQL
-docker compose --env-file server/.env -f docker-compose.prod.yml up -d --build   # produção: aplicação + Caddy, banco gerenciado
+docker compose --env-file server/.env -f docker-compose.prod.yml up -d --build   # caminho 1 (VM + Caddy), não usado em produção
 ```
 
 Contas do seed: admin@oficina.com (admin), arthur@ e rafael@oficina.com (mecânicos),
@@ -73,4 +73,8 @@ E-mails e registros do sistema ficam em `comunicacoes`, e a view `historico_mens
 - Commits em português, autor brenosuski17.
 - Antes de concluir uma mudança: `npm run lint`, `npm test --prefix server` e `npm run build`.
 - Mudanças visuais: conferir no navegador, em desktop e celular.
-- Produção é no Azure (README, "Deploy no Azure for Students"): PostgreSQL gerenciado, nunca banco em container. Não alterar recursos reais do Azure ou do Telegram sem o Breno pedir.
+- Produção é no Azure (README, "Deploy no Azure (Container Apps)"), na conta gratuita "Azure subscription 1" (não é Azure for Students;
+  a assinatura não libera VMs): Container Apps `oficinastatus` + ACR `oficinastatusbreno` + PostgreSQL Flexible Server
+  `oficinastatus-db-breno` sem acesso público, só por Private Endpoint na `vnet-oficinastatus`, tudo em `rg-oficinastatus`
+  (Brazil South). Segredos são secrets do Container Apps, nunca arquivo. PostgreSQL gerenciado, nunca banco em container.
+  Não alterar recursos reais do Azure ou do Telegram sem o Breno pedir.
